@@ -68,6 +68,9 @@ class VideoManager:
         self.is_playing = False
 
     def show_frame(self, frame_index):
+        if self.cap is None or not self.cap.isOpened():
+            self.log("No video loaded or video capture is not opened.")
+            return
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         ret, frame = self.cap.read()
         if ret:
@@ -107,18 +110,20 @@ class VideoManager:
                     color = (0, 0, 255) if state == 0 else (255, 0, 0)
                     cv2.circle(frame, (int(centroid[0]), int(centroid[1])), 2, color, 1)
                 except Exception as e:
-                    self.log(f"Error: {e}")
+                    continue
+                    #print(e)
+                    #self.log(f"Error: {e}")
         return frame
 
     def next_frame(self):
-        if not self.is_playing:
+        if not self.is_playing and self.cap and self.cap.isOpened():
             current_frame = self.scrollbar.get()
             if current_frame < self.total_frames - 1:
                 self.show_frame(current_frame + 1)
                 self.update_scrollbar(current_frame + 1)
 
     def previous_frame(self):
-        if not self.is_playing:
+        if not self.is_playing and self.cap and self.cap.isOpened():
             current_frame = self.scrollbar.get()
             if current_frame > 0:
                 self.show_frame(current_frame - 1)
@@ -126,6 +131,9 @@ class VideoManager:
 
     def update_scrollbar(self, frame_index):
         self.scrollbar.set(frame_index)
+    
+    def get_total_frames(self):
+        return self.total_frames
 
     def get_datetime_from_file_name(self, video_name):
             try:
@@ -160,5 +168,3 @@ class VideoManager:
             except Exception as e:
                 print(f"Error parsing date and time from video name '{video_name}': {e}")
                 return None
-
-

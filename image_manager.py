@@ -6,6 +6,10 @@ class ImageManager:
     def __init__(self, log_func):
         self.log = log_func
         self.resize_factor = 0.75
+        self.image_listbox = None
+        self.image_label = None
+        self.median_image_listbox = None
+        self.median_image_label = None
 
     def display_image(self, image_path, label):
         try:
