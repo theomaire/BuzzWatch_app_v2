@@ -570,10 +570,12 @@ class PlotManager:
 
                 var_data = self.get_var_data(var, population_data, individual_data, threshold)
                 var_data = self.crop_time(start_date, end_date, var_data)
-                var_data = var_data.between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
 
                 if normalize:
                     var_data = self.normalize_by_daily_total(var_data)
+                var_data = var_data.between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
+
+
 
                 daily_means = var_data.resample('D').mean()
                 avg_all_days = daily_means.mean()
@@ -593,10 +595,13 @@ class PlotManager:
                             individual_data = exp_data['individual_data']
 
                             var_data = self.get_var_data(var, population_data, individual_data, threshold)
-                            var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
 
                             if normalize:
                                 var_data = self.normalize_by_daily_total(var_data)
+
+                            var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
+
+
 
                             group_data[var].append(var_data.resample('D').mean())
 
@@ -627,10 +632,12 @@ class PlotManager:
 
                         var_data = self.get_var_data(var, population_data, individual_data, threshold)
                         var_data = self.crop_time(start_date, end_date, var_data)
-                        var_data = var_data.between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
 
                         if normalize:
                             var_data = self.normalize_by_daily_total(var_data)
+                        var_data = var_data.between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
+
+
 
                         group_data[var].append(var_data.resample('D').mean())
 
