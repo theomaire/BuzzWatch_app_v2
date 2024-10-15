@@ -51,14 +51,15 @@ class ComparisonTabManager:
         self.exp_end_date_comboboxes = []
 
         self.variable_name_mapping = {
-        'numb_mosquitos_flying': 'numb_mosquitos_flying',
-        'numb_mosquitos_sugar': 'numb_mosquitos_sugar',
-        'numb_mosquitos_hs': 'numb_mosquito_control',
-        'numb_mosquitos_left_ctrl': 'numb_mosquitos_left_ctrl',
-        'numb_mosquitos_right_ctrl': 'numb_mosquitos_right_ctrl',
-        'flight_duration': 'flight_duration',
-        'average_speed': 'average_speed'
-    }
+            'numb_mosquitos_flying': 'numb_mosquitos_flying',
+            'numb_mosquitos_sugar': 'numb_mosquitos_sugar',
+            'numb_mosquitos_hs': 'numb_mosquito_control',
+            'sugar_feeding_index': 'Sugar Feeding Activity',  # New variable
+            'numb_mosquitos_left_ctrl': 'numb_mosquitos_left_ctrl',
+            'numb_mosquitos_right_ctrl': 'numb_mosquitos_right_ctrl',
+            'flight_duration': 'flight_duration',
+            'average_speed': 'average_speed'
+        }
 
         
 
@@ -66,6 +67,11 @@ class ComparisonTabManager:
         self.exp_group_assignments = {}
         self.exp_category_assignments = {}  # New addition
 
+    def compute_sugar_feeding_index(self, population_data):
+        sugar_feeding_index = population_data['numb_mosquitos_sugar'] - population_data['numb_mosquitos_hs']
+        # Optionally apply more complex transformations or filters if needed
+        return sugar_feeding_index
+    
     def collect_group_colors(self):
         return {entry.get(): color.get() for entry, color in zip(self.group_alias_entries, self.group_color_entries)}
 
@@ -434,6 +440,8 @@ class ComparisonTabManager:
                     dead_mosquito_column = df_dead.columns[1]
 
                     if full_population_data is not None:
+                        sugar_feeding_index = self.compute_sugar_feeding_index(full_population_data)
+                        full_population_data['sugar_feeding_index'] = sugar_feeding_index
                         full_population_data = full_population_data[(full_population_data.index >= start_date) & (full_population_data.index <= end_date)]
                         normalized_start_date = full_population_data.index.min().normalize()  # Account for cropped data
                         shift_offset = common_start_date - normalized_start_date
@@ -936,6 +944,9 @@ class ComparisonTabManager:
         # Distribute checkboxes horizontally across the same row
         # Distribute checkboxes horizontally across the same row
         for i, (internal_name, display_name) in enumerate(self.variable_name_mapping.items()):
+            if internal_name in ['numb_mosquitos_left_ctrl', 'numb_mosquitos_right_ctrl']:
+                continue  # Skip the rest of the loop for these variables
+
             var_chk = tk.BooleanVar()
             if internal_name == 'numb_mosquitos_flying':
                 var_chk.set(True)  # Set this checkbox to be selected by default
@@ -1030,6 +1041,15 @@ class ComparisonTabManager:
                     experiments_to_plot.append(item)
 
         plot_type = self.plot_type_combobox.get()
+
+        # Define specific dimensions (width, single_subplot_height) for each plot type
+        plot_base_dimensions = {
+            "Entire Time Series": (15, 3),
+            "Daily Average": (8, 5),
+            "Average Over Days": (8, 5),
+            "Scatter plot variability": (8, 4)
+        }
+
         plot_args_base = {
             "resample_interval": resample_interval,
             "moving_avg_window": moving_avg_window,
@@ -1047,7 +1067,11 @@ class ComparisonTabManager:
 
         if self.stacked_plot_var.get():
             num_vars = len(selected_vars)
-            fig, axes = plt.subplots(num_vars, 1, figsize=(10, 3 * num_vars), sharex=True, constrained_layout=True)
+
+            # Set figure size for stacked plots using base height times the number of variables
+            base_width, single_height = plot_base_dimensions.get(plot_type, (10, 3))  # Default to (10, 3)
+            total_height = single_height * num_vars
+            fig, axes = plt.subplots(num_vars, 1, figsize=(base_width, total_height), sharex=True, constrained_layout=True)
 
             if num_vars == 1:
                 axes = [axes]
@@ -1069,8 +1093,13 @@ class ComparisonTabManager:
             plt.close(fig)
 
         else:
-            fig, ax = plt.subplots(figsize=(10, 6))
-            plot_args = {**plot_args_base, "selected_vars": [internal_name for internal_name, display_name in selected_vars], "ax": ax, "display_names": [display_name for internal_name, display_name in selected_vars]}
+            # Look up the figsize for the non-stacked plot
+            base_width, single_height = plot_base_dimensions.get(plot_type, (10, 6))  # Default to (10, 6) for single plots
+            fig, ax = plt.subplots(figsize=(base_width, single_height))
+            plot_args = {**plot_args_base,
+                        "selected_vars": [internal_name for internal_name, display_name in selected_vars],
+                        "ax": ax,
+                        "display_names": [display_name for internal_name, display_name in selected_vars]}
 
             if plot_type == "Entire Time Series":
                 self.plot_manager.plot_entire_time_series(**plot_args)

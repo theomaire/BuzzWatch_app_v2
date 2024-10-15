@@ -95,13 +95,16 @@ class UIManager:
         tab_text = self.notebook.tab(selected_tab, "text")
         self.log(f"Switched to tab: {tab_text}")
 
-        # Reset video manager on tab switch to avoid conflicts
-        self.video_manager.is_playing = False  # Stop any ongoing video playback
-        self.video_manager.cap = None          # Release any loaded video
-        self.video_manager.label.config(image='')  # Clear the video label
-        self.video_manager.set_display_label(None)
+        # Stop ongoing video playback
+        self.video_manager.is_playing = False
+        if self.video_manager.cap:
+            self.video_manager.cap.release()  # Properly release any loaded video
 
-        # Re-set the display label if the current tab has video display
+        # Reset video display: If you switch to a non-video tab, clear the label
+        if self.video_manager.label:
+            self.video_manager.label.config(image='')  # Clear any displayed image
+
+        # Assign the appropriate display label and scrollbar upon returning to a video-related tab
         if tab_text == 'Video Inspection & Initialization':
             self.video_manager.set_display_label(self.video_tab_manager.video_label)
             self.video_manager.set_scrollbar(self.video_tab_manager.video_scrollbar)

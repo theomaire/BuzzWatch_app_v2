@@ -24,10 +24,16 @@ class VideoManager:
         if self.cap:
             self.cap.release()
         self.cap = cv2.VideoCapture(video_path)
+        
         if not self.cap.isOpened():
             self.log(f"Error opening video file: {video_path}")
             return False
+        
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if self.total_frames < 1:
+            self.log(f"Error: No frames found in the video {video_path}")
+            return False
+
         return True
 
     def set_display_label(self, label):
@@ -79,8 +85,10 @@ class VideoManager:
             self._display_frame(frame)
 
     def _display_frame(self, frame):
-        if not self.label:
+        if not self.label or frame is None:
+            self.log("Frame or video display label is not available.")
             return
+
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         label_width = self.label.winfo_width()
         label_height = self.label.winfo_height()

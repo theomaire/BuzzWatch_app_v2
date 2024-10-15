@@ -267,6 +267,8 @@ class AnalysisTabManager:
         if self.experiment_manager.experiment:
             images_path = os.path.join(self.experiment_manager.experiment.folder_analysis, "individual_images")
             self.ui_manager.image_manager.update_image_list(self.ui_manager.image_manager.image_listbox, images_path)
+        else:
+            self.log("No exp loaded")
 
     def update_median_image_listbox(self):
         if self.experiment_manager.experiment:

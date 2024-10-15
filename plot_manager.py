@@ -374,7 +374,7 @@ class PlotManager:
         ax.set_xlabel("Hour of the Day")
         ax.set_ylabel("Value")
         plt.xticks(rotation=45)
-        ax.legend()
+        ax.legend(fontsize='small')
 
         exp_part = "_and_".join(exp_names) if exp_names else ""
         group_part = "_and_".join(group_names) if group_names else ""

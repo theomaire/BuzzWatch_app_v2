@@ -77,38 +77,74 @@ class ExperimentManager:
         if update_ui_func:
             update_ui_func()
 
-    def initialize_new_experiment(self,update_ui_func=None):
-        folder_videos_path = filedialog.askdirectory(title="Select Folder with Videos (e.g., root_folder_videos/experiment_name/cage_name/batch_number)")
-        if not folder_videos_path:
-            self.log("No videos directory selected.")
+    def load_experiment_from_json(self, json_path, update_ui_func=None):
+        """Load experiment details from a JSON file."""
+        if not os.path.exists(json_path):
+            self.log("Experiment JSON file not found.")
             return
 
-        try:
-            parts = os.path.normpath(folder_videos_path).split(os.sep)
-            batch_name = parts[-1]
-            cage_name = parts[-2]
-            experiment_name = parts[-3]
-        except IndexError:
-            self.log("Invalid folder structure. Please follow root_folder_videos/experiment_name/cage_name/batch_number")
+        with open(json_path, 'r') as json_file:
+            experiment_details = json.load(json_file)
+
+        # Load all parts of the experiment details
+        self.root_folder_videos = experiment_details.get('root_folder_videos')
+        self.root_folder_analysis = experiment_details.get('root_folder_analysis')
+        self.experiment_name = experiment_details.get('experiment_name')
+        self.cage_name = experiment_details.get('cage_name')
+        self.batch_name = experiment_details.get('batch_name')
+        self.settings_file = experiment_details.get('settings_file')  # Reference the copied file path
+
+        # Reconstruct full paths using loaded data
+        self.folder_videos = os.path.join(self.root_folder_videos, self.experiment_name, self.cage_name, self.batch_name)
+        self.folder_analysis = os.path.join(self.root_folder_analysis, self.experiment_name, self.cage_name, self.batch_name)
+
+        # Load settings from the copied file
+        self.load_settings(self.settings_file)
+
+        self.experiment_alias = f"exp_{self.experiment_name}_{self.cage_name}_{self.cage_name}"
+
+        # Create or update the experiment object
+        self.experiment = buzzwatch_experiment_analysis(
+            self.folder_analysis,
+            self.folder_videos,
+            self.experiment_alias,
+            self.settings,
+            self.settings_file,
+            log_func=self.log,
+            debug_mode=False
+        )
+
+        self.log(f"Experiment details loaded from {json_path}")
+
+        # Call the UI update function if provided to refresh relevant UI components
+        if update_ui_func:
+            update_ui_func()
+
+
+    def initialize_new_experiment(self, root_folder_videos=None, root_folder_analysis=None,
+                                  experiment_name=None, cage_name=None, batch_name=None,settings_file=None,
+                                  update_ui_func=None):
+        if not root_folder_videos or not root_folder_analysis:
+            self.log("Root folders for videos and analysis must be provided.")
+            return
+        
+        if not experiment_name or not cage_name or not batch_name:
+            self.log("Experiment name, cage name, and batch name must be provided.")
+            return
+        
+        if not settings_file or not os.path.isfile(settings_file):
+            self.log("A valid settings file must be provided.")
             return
 
-        root_folder_analysis = filedialog.askdirectory(title="Select Root Folder for Analysis")
-        if not root_folder_analysis:
-            self.log("No root folder for analysis selected.")
-            return
-
+        folder_videos_path = os.path.join(root_folder_videos, experiment_name, cage_name, batch_name)
         folder_analysis_path = os.path.join(root_folder_analysis, experiment_name, cage_name, batch_name)
 
         create_folder(folder_analysis_path)
 
-        settings_file_path = filedialog.askopenfilename(title="Select Settings YAML File", filetypes=[("YAML files", "*.yaml *.yml")])
-        if not settings_file_path:
-            self.log("No settings file selected.")
-            return
 
-        settings_file_name = os.path.basename(settings_file_path)
+        settings_file_name = os.path.basename(settings_file)
         settings_file_destination = os.path.join(folder_analysis_path, settings_file_name)
-        shutil.copyfile(settings_file_path, settings_file_destination)
+        shutil.copyfile(settings_file, settings_file_destination)
 
         with open(settings_file_destination, 'r') as file:
             self.settings = yaml.safe_load(file)
@@ -125,23 +161,38 @@ class ExperimentManager:
             self.experiment_alias,
             self.settings,
             settings_file_destination,
-            log_func=None,
+            log_func=self.log,
             debug_mode=False
         )
 
-        exp_object_path = os.path.join(self.folder_analysis, f"temp_data_{self.experiment_alias}.pkl")
-        with open(exp_object_path, 'wb') as f:
-            pickle.dump(self.experiment, f)
-        self.experiment.log = self.log
-        self.config['last_experiment'] = exp_object_path
-        self.save_config(self.config)
-        self.log(f"Experiment saved to {exp_object_path}")
+        # Save experiment details to JSON
+        experiment_details = {
+            'root_folder_videos': root_folder_videos,
+            'root_folder_analysis': root_folder_analysis,
+            'experiment_name': experiment_name,
+            'cage_name': cage_name,
+            'batch_name': batch_name,
+            'settings_file': settings_file_destination  # Use the copied settings file
+        }
+        json_experiment_path = os.path.join(self.folder_analysis, f"experiment_{self.experiment_alias}.json")
+        self.save_experiment_to_json(json_experiment_path, experiment_details)
+
+        #self.config['last_experiment'] = json_experiment_path
+        #self.save_config(self.config)
+        self.log(f"Experiment details saved to {json_experiment_path}")
 
         if update_ui_func:
             update_ui_func()
 
         self.log("New experiment initialized successfully.")
-        # You can add code to update other parts of the UI here
+
+
+    def save_experiment_to_json(self, json_path, experiment_details):
+        """Save experiment details to a JSON file."""
+        with open(json_path, 'w') as json_file:
+            json.dump(experiment_details, json_file, indent=4)
+        self.log(f"Experiment details saved to {json_path}")
+
 
     ## Sample functions to go inside ExperimentManager class
     def get_images_from_video(self, force_rerun):
