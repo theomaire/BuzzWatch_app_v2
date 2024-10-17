@@ -23,7 +23,7 @@ class VideoAnalyzerApp:
         # Set the application icon
         self._set_app_icon()
 
-        self._maximize_window()
+        #self._maximize_window()
 
 
         # Initialize ConfigManager
@@ -103,9 +103,9 @@ class VideoAnalyzerApp:
         """Handle the window closing event."""
         self.experiment_manager.stop_video_playback()
         self.root.destroy()
-    def _maximize_window(self):
-        """Maximize the window to fit the screen."""
-        self.root.state('zoomed')  # This will maximize the window for Windows and macOS
+    #def _maximize_window(self):
+    #    """Maximize the window to fit the screen."""
+    #    self.root.state('zoomed')  # This will maximize the window for Windows and macOS
 
 
 if __name__ == "__main__":
