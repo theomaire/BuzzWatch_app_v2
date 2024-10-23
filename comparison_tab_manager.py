@@ -81,7 +81,7 @@ class ComparisonTabManager:
         self.glmm_analysis_manager = GLMMAnalysisManager(self.log, self.glmm_results_dir)
 
     def compute_sugar_feeding_index(self, population_data):
-        sugar_feeding_index = population_data['numb_mosquitos_sugar'] - population_data['numb_mosquitos_hs']
+        sugar_feeding_index = population_data['numb_mosquitos_sugar'] + population_data['numb_mosquitos_hs']
         # Optionally apply more complex transformations or filters if needed
         return sugar_feeding_index
     
@@ -1633,13 +1633,19 @@ class ComparisonTabManager:
                 }
                 all_plot_data.append(plot_data_entry)
 
+             # Assign unique filename components
+            timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+            effects_summary = '_'.join(eff[:3] for eff in fixed_effects)  # e.g., "Gro" for Group
+            base_filename = f"glmm_{variable_name}_{effects_summary}_{timestamp}"
+
+
             # Plot results
             if isinstance(day_interval_size, str) and day_interval_size.lower() != "all days":
                 start_date_str = self.start_date_combobox.get()
                 end_date_str = self.end_date_combobox.get()
-                self.plot_heatmaps(results, fixed_effects, start_date_str, end_date_str)
+                self.plot_heatmaps(results, fixed_effects, start_date_str, end_date_str,base_filename)
             else:
-                self.plot_glmm_results(results, fixed_effects, grouped_experiments=self.grouped_experiments)
+                self.plot_glmm_results(results, fixed_effects, grouped_experiments=self.grouped_experiments,base_filename=base_filename)
             
             # Save plot data and caption
             filename_prefix = f"glmm_{variable_name}"
@@ -1874,7 +1880,7 @@ class ComparisonTabManager:
         return intervals
     
 
-    def plot_glmm_results(self, results, fixed_effects, grouped_experiments):
+    def plot_glmm_results(self, results, fixed_effects, grouped_experiments,base_filename):
         # Retrieve the selected display name from the combobox
         display_name = self.variable_combobox.get()
 
@@ -1965,12 +1971,12 @@ class ComparisonTabManager:
         plt.tight_layout()
 
 
-        filename = f"glmm_results_{'_'.join(fixed_effects)}"
+        filename = base_filename + "_results"
         self.plot_manager.save_plot(fig, filename)
         plt.show()
         plt.close(fig)
 
-    def plot_heatmaps(self, results, fixed_effects, start_date_str, end_date_str):
+    def plot_heatmaps(self, results, fixed_effects, start_date_str, end_date_str,base_filename):
         try:
             # Convert results to DataFrame
             results_df = pd.DataFrame(results)
@@ -2027,7 +2033,7 @@ class ComparisonTabManager:
                 plt.tight_layout()
 
                 # Save or display the plots
-                filename = f"heatmaps_{effect}_glmm_"
+                filename = base_filename + f"_heatmap_{effect}"
                 self.plot_manager.save_plot(fig, filename)
                 plt.show()
                 plt.close(fig)
