@@ -11,6 +11,15 @@ from statistical_analysis_manager import StatisticalAnalysisManager
 from statsmodels.stats.multitest import multipletests
 from matplotlib.markers import MarkerStyle
 from matplotlib import colors
+from glmm_analysis_manager import GLMMAnalysisManager
+import statsmodels.api as sm
+from statsmodels.regression.mixed_linear_model import MixedLM
+import warnings
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+import matplotlib.colors as mcolors
+import datetime
+
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 # At the beginning of your script or top of your class
 AVAILABLE_COLORS = list(colors.TABLEAU_COLORS.keys())
@@ -66,6 +75,10 @@ class ComparisonTabManager:
         # Initialize group and category assignments
         self.exp_group_assignments = {}
         self.exp_category_assignments = {}  # New addition
+
+                # Initialize GLMM results directory
+        self.glmm_results_dir = os.path.join(os.getcwd(), 'glmm_results')
+        self.glmm_analysis_manager = GLMMAnalysisManager(self.log, self.glmm_results_dir)
 
     def compute_sugar_feeding_index(self, population_data):
         sugar_feeding_index = population_data['numb_mosquitos_sugar'] - population_data['numb_mosquitos_hs']
@@ -1189,75 +1202,68 @@ class ComparisonTabManager:
         dimensionality_button = tk.Button(red_frame, text="Run Dimensionality Reduction", command=self.run_dimensionality_reduction)
         dimensionality_button.pack(side=tk.LEFT, padx=5)
 
-
-
         # Analysis method section
-        analysis_frame = tk.LabelFrame(tab, text="Statistical Analysis")
+        analysis_frame = tk.LabelFrame(tab, text="GLMM Analysis Configuration")
         analysis_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="nsew")
         analysis_frame.grid_columnconfigure(0, weight=1)
         analysis_frame.grid_columnconfigure(1, weight=1)
 
-        analysis_method_label = tk.Label(analysis_frame, text="Analysis Method:")
-        analysis_method_label.grid(row=0, column=0, padx=5, sticky="w")
+        # Variable Selection
+        variable_label = tk.Label(analysis_frame, text="Variable:")
+        variable_label.grid(row=0, column=0, padx=5, sticky="w")
 
-        self.analysis_method_combobox = ttk.Combobox(analysis_frame, values=["ANOVA", "GLMM"])
-        self.analysis_method_combobox.set("ANOVA")
-        self.analysis_method_combobox.grid(row=0, column=1, padx=5, sticky="w")
+        # Update combo box with display names
+        self.variable_combobox = ttk.Combobox(
+            analysis_frame, 
+            values=list(self.variable_name_mapping.values())
+        )
+        self.variable_combobox.set("numb_mosquitos_flying")  # Ensure this matches a display name
+        self.variable_combobox.grid(row=0, column=1, padx=5, sticky="w")
 
-        interval_size_label = tk.Label(analysis_frame, text="Day Interval Size:")
-        interval_size_label.grid(row=1, column=0, padx=5, sticky="w")
+        # Day Interval Size
+        day_interval_label = tk.Label(analysis_frame, text="Day Interval Size (days):")
+        day_interval_label.grid(row=1, column=0, padx=5, sticky="w")
 
-        # Add 'All Days' as an option
-        self.day_interval_size_combobox = ttk.Combobox(analysis_frame, values=[str(i) for i in range(1, 15)] + ["All Days"])
-        self.day_interval_size_combobox.set("5")
+        self.day_interval_size_combobox = ttk.Combobox(analysis_frame, values=[str(i) for i in range(3, 8)] + ["All Days"])
+        self.day_interval_size_combobox.set("All Days")
         self.day_interval_size_combobox.grid(row=1, column=1, padx=5, sticky="w")
 
-        time_interval_size_label = tk.Label(analysis_frame, text="Time Interval Size (hours):")
-        time_interval_size_label.grid(row=2, column=0, padx=5, sticky="w")
+        # adjust the logic to enforce a 10-minute update
+        time_interval_label = tk.Label(analysis_frame, text="Time Interval Size (minutes):")
+        time_interval_label.grid(row=2, column=0, padx=5, sticky="w")
 
-        self.time_interval_size_combobox = ttk.Combobox(analysis_frame, values=[str(i) for i in range(1, 24)])  # Interval size options
-        self.time_interval_size_combobox.set("4")
+        self.time_interval_size_combobox = ttk.Combobox(analysis_frame, values=[str(i) for i in range(10, 61, 10)])
+        self.time_interval_size_combobox.set("30")
         self.time_interval_size_combobox.grid(row=2, column=1, padx=5, sticky="w")
 
-        run_analysis_button = tk.Button(analysis_frame, text="Run Statistical Analysis", 
-                                        command=lambda: self.run_automated_stat_analysis(method=self.analysis_method_combobox.get().lower()))
-        run_analysis_button.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
+        # Fixed Effects
+        fixed_effects_label = tk.Label(analysis_frame, text="Fixed Effects (comma-separated):")
+        fixed_effects_label.grid(row=3, column=0, padx=5, sticky="w")
 
-        load_results_button = tk.Button(analysis_frame, text="Load and Visualize Results", command=self.load_and_visualize_results)
-        load_results_button.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
+        self.fixed_effects_entry = tk.Entry(analysis_frame)
+        self.fixed_effects_entry.insert(0, "Category")
+        self.fixed_effects_entry.grid(row=3, column=1, padx=5)
+
+        # Random Effects
+        random_effects_label = tk.Label(analysis_frame, text="Random Effects (comma-separated):")
+        random_effects_label.grid(row=4, column=0, padx=5, sticky="w")
+
+        self.random_effects_entry = tk.Entry(analysis_frame)
+        self.random_effects_entry.insert(0, "Experiment")
+        self.random_effects_entry.grid(row=4, column=1, padx=5)
 
 
-        # New section for Simple Tests with Bar and Scatter Plots
-        simple_test_frame = tk.LabelFrame(tab, text="Simple Tests Between Conditions")
-        simple_test_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="nsew")
-        simple_test_frame.grid_columnconfigure(0, weight=1)
-        simple_test_frame.grid_columnconfigure(1, weight=1)
+        self.normalize_dim_reduction_var_glmm = tk.BooleanVar()
+        normalize_checkbox_glmm = tk.Checkbutton(analysis_frame, text="Normalize by Total Daily Activity", variable=self.normalize_dim_reduction_var_glmm)
+        # Changed from pack to grid, using row 5, col 0, spanning 2 columns
+        normalize_checkbox_glmm.grid(row=5, column=0, padx=5, columnspan=2, sticky="w")
 
-        start_date_label = tk.Label(simple_test_frame, text="Start Date:")
-        start_date_label.grid(row=0, column=0, padx=5, sticky="w")
-        self.start_date_entry = tk.Entry(simple_test_frame)
-        self.start_date_entry.grid(row=0, column=1, padx=5, sticky="w")
+        # Run Analysis Button
+        run_analysis_button = tk.Button(analysis_frame, text="Run GLMM Analysis", command=self.run_glmm_analysis)
+        # Updated row number to 6 since checkbox occupies row 5 now
+        run_analysis_button.grid(row=6, column=0, padx=5, pady=5, columnspan=2, sticky="ew")
 
-        end_date_label = tk.Label(simple_test_frame, text="End Date:")
-        end_date_label.grid(row=1, column=0, padx=5, sticky="w")
-        self.end_date_entry = tk.Entry(simple_test_frame)
-        self.end_date_entry.grid(row=1, column=1, padx=5, sticky="w")
 
-        start_time_label = tk.Label(simple_test_frame, text="Start Time (Hour):")
-        start_time_label.grid(row=2, column=0, padx=5, sticky="w")
-        self.start_time_entry = tk.Entry(simple_test_frame)
-        self.start_time_entry.grid(row=2, column=1, padx=5, sticky="w")
-
-        end_time_label = tk.Label(simple_test_frame, text="End Time (Hour):")
-        end_time_label.grid(row=3, column=0, padx=5, sticky="w")
-        self.end_time_entry = tk.Entry(simple_test_frame)
-        self.end_time_entry.grid(row=3, column=1, padx=5, sticky="w")
-
-        # plot_bar_button = tk.Button(simple_test_frame, text="Plot Bar Graph", command=self.plot_bar_graph)
-        # plot_bar_button.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
-
-        # plot_scatter_button = tk.Button(simple_test_frame, text="Plot Scatter Plot", command=self.plot_scatter_plot)
-        # plot_scatter_button.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
 
     def run_dimensionality_reduction(self):
         selected_var = 'numb_mosquitos_flying'
@@ -1450,10 +1456,6 @@ class ComparisonTabManager:
         daily_features.columns = ['Date', 'Experiment', 'mean', 'std', 'max', 'min', 'median']
         return daily_features
     
-
-
-
-
     def generate_time_intervals(self,time_interval_size):
         start_hours = np.arange(24)
         time_intervals = []
@@ -1465,150 +1467,6 @@ class ComparisonTabManager:
                 time_intervals.append((start_hour, end_hour, True))
         return time_intervals
     
-
-    def run_automated_stat_analysis(self, method='glmm'):
-        selected_var = 'numb_mosquitos_flying'  # Variable to analyze
-        fixed_effects = ["Condition"]  # Only Condition is the fixed effect
-        random_effects = ["Day", "Experiment"]  # Day and Experiment are random effects
-        results = {factor: {"effect_size": [], "p_value": [], "z_value": []} for factor in fixed_effects}  # Initialize results
-
-        combined_data = self.get_combined_data([selected_var])
-        if combined_data.empty:
-            self.log("Combined data is empty. Aborting analysis.")
-            return
-
-        start_date = combined_data.index.min().date()
-        end_date = combined_data.index.max().date()
-
-        days = pd.date_range(start_date, end_date, freq='D')
-        day_interval_size = self.day_interval_size_combobox.get()
-
-            # Define day intervals
-        if day_interval_size == "All Days":
-            day_intervals = [(days[0], days[-1])]
-        else:
-            day_interval_size = int(day_interval_size)
-            day_intervals = [(days[i], days[min(i + day_interval_size - 1, len(days) - 1)]) for i in range(len(days) - day_interval_size + 1)]
-
-        time_interval_size = int(self.time_interval_size_combobox.get())
-        time_intervals = self.generate_time_intervals(time_interval_size)
-
-
-        for day_interval in day_intervals:
-            for start_hour, end_hour, span_midnight in time_intervals:
-                segment_data = self.get_data_for_interval(selected_var, day_interval[0], day_interval[1], start_hour, end_hour, span_midnight)
-                #print(segment_data)
-                if segment_data.empty:
-                    self.log(f"No data for interval {day_interval[0]} to {day_interval[1]}, {start_hour:02d}:00 to {end_hour:02d}:00.")
-                    continue
-
-                #result = self.stat_analysis_manager.analyze_variability(
-                    segment_data, selected_var, start_hour, end_hour, fixed_effects=fixed_effects, random_effects=random_effects, method=method
-                #)
-                result = self.stat_analysis_manager.perform_glmm(segment_data, selected_var, fixed_effects, random_effects, self.common_save_dir, f"glmm_{day_interval[0]}_{start_hour}_{end_hour}")
-                #print(result)
-        #         if result is not None:
-        #             for factor in fixed_effects:
-        #                 try:
-        #                     index = 0#result["Factor"].index(factor)
-        #                     effect_size = result["coefficient"][index]
-        #                     p_value = result["p_value"][index]
-        #                     z_value = result["z_value"][index]
-        #                 except (ValueError, KeyError) as e:
-        #                     self.log(f"Error extracting factor '{factor}': {e}")
-        #                     effect_size, p_value, z_value = np.nan, np.nan, np.nan
-                        
-        #                 results[factor]["effect_size"].append({
-        #                     "day_interval": (day_interval[0].strftime('%Y-%m-%d'), day_interval[1].strftime('%Y-%m-%d')),
-        #                     "time_interval": f"{start_hour:02d}:00-{end_hour:02d}:00",
-        #                     "effect_size": effect_size,
-        #                 })
-        #                 results[factor]["p_value"].append({
-        #                     "day_interval": (day_interval[0].strftime('%Y-%m-%d'), day_interval[1].strftime('%Y-%m-%d')),
-        #                     "time_interval": f"{start_hour:02d}:00-{end_hour:02d}:00",
-        #                     "p_value": p_value,
-        #                 })
-        #                 results[factor]["z_value"].append({
-        #                     "day_interval": (day_interval[0].strftime('%Y-%m-%d'), day_interval[1].strftime('%Y-%m-%d')),
-        #                     "time_interval": f"{start_hour:02d}:00-{end_hour:02d}:00",
-        #                     "z_value": z_value,
-        #                 })
-
-        # # Apply multiple testing correction after collecting all results
-        # for factor in fixed_effects:
-        #     if results[factor]["p_value"]:
-        #         p_values = [entry["p_value"] for entry in results[factor]["p_value"] if np.isfinite(entry["p_value"])]
-                
-        #         corrected_p_values = []
-        #         if p_values:
-        #             _, corrected_p_values_tmp, _, _ = multipletests(p_values, alpha=0.05, method='fdr_bh')
-        #             corrected_p_values_iter = iter(corrected_p_values_tmp)
-                    
-        #             for entry in results[factor]["p_value"]:
-        #                 if np.isfinite(entry["p_value"]):
-        #                     entry["corrected_p_value"] = next(corrected_p_values_iter)
-        #                 else:
-        #                     entry["corrected_p_value"] = np.nan
-
-        #         effect_size_df = pd.DataFrame(results[factor]["effect_size"])
-        #         p_values_df = pd.DataFrame(results[factor]["p_value"])
-        #         z_values_df = pd.DataFrame(results[factor]["z_value"])
-        #         p_values_df['z_value'] = z_values_df['z_value']
-                
-        #         result_dir = self.common_save_dir
-        #         if result_dir:
-        #             effect_size_df.to_csv(os.path.join(result_dir, f"effect_size_{factor}_{method}.csv"), index=False)
-        #             p_values_df.to_csv(os.path.join(result_dir, f"p_values_{factor}_{method}.csv"), index=False)
-        #             self.log(f"{method.upper()} results saved in {result_dir}")
-
-
-    def load_and_visualize_results(self):
-        result_dir = self.common_save_dir
-
-        method = self.analysis_method_combobox.get().lower()
-
-        if method == "glmm":
-            factors = ["Condition"]
-        elif method == 'anova':
-            factors  = ["Condition","Day", "Experiment"]
-       
-        if not result_dir:
-            self.log("Common result directory is not set. Please finalize group settings first.")
-            return
-
-        for factor in factors:
-            effect_size_path = os.path.join(result_dir, f"effect_size_{factor}_{method}.csv")
-            p_values_path = os.path.join(result_dir, f"p_values_{factor}_{method}.csv")
-
-            if os.path.exists(effect_size_path) and os.path.exists(p_values_path):
-                effect_size_df = pd.read_csv(effect_size_path)
-                p_values_df = pd.read_csv(p_values_path)
-                
-                # Ensure 'neg_log_p_value' and 'z_value' columns
-                p_values_df['neg_log_p_value'] = p_values_df['p_value'].apply(lambda x: -np.log10(max(x, 0.0001)))
-                if 'z_value' not in p_values_df.columns:
-                    p_values_df['z_value'] = np.nan
-                
-                # Calculate the start date
-                start_date = pd.to_datetime(effect_size_df['day_interval'].str.extract(r"'(\d{4}-\d{2}-\d{2})'")[0]).min().normalize()
-                
-                # Calculate days_since_start
-                effect_size_df['days_since_start'] = effect_size_df['day_interval'].apply(lambda x: (pd.to_datetime(x.split(',')[0].strip("('")) - start_date).days)
-                p_values_df['days_since_start'] = p_values_df['day_interval'].apply(lambda x: (pd.to_datetime(x.split(',')[0].strip("('")) - start_date).days)
-
-                # Calculate median time interval
-                effect_size_df['median_time_interval'] = effect_size_df['time_interval'].apply(self.plot_manager.calculate_median_time_interval)
-                p_values_df['median_time_interval'] = p_values_df['time_interval'].apply(self.plot_manager.calculate_median_time_interval)
-
-                # Determine start and end dates as strings
-                start_date_str = start_date.strftime('%Y-%m-%d')
-                end_date_str = (start_date + pd.Timedelta(days=effect_size_df['days_since_start'].max())).strftime('%Y-%m-%d')
-
-                # Call the PlotManager's method
-                self.plot_manager.plot_heatmaps(effect_size_df, p_values_df, p_values_df, factor, method, start_date_str, end_date_str)
-            else:
-                self.log("Effect size or p-values file not found in the common result directory.")
-
     def get_data_for_interval(self, var, start_day, end_day, start_hour, end_hour, span_midnight=False):
         combined_data = []
         for group_name, experiments in self.grouped_experiments.items():
@@ -1720,6 +1578,507 @@ class ComparisonTabManager:
         combined_df.set_index('Timestamp', inplace=True)
         return combined_df
     
+
+
+############# GLMM functions
+
+    def run_glmm_analysis(self):
+        # Retrieve the selected display name from the combobox
+        display_name = self.variable_combobox.get()
+        
+        # Perform reverse lookup to get the internal variable name
+        variable_name = None
+        for key, value in self.variable_name_mapping.items():
+            if value == display_name:
+                variable_name = key
+                break
+
+        if variable_name is None:
+            self.log(f"No internal name found for variable: {display_name}")
+            return
+
+        day_interval_size = self.day_interval_size_combobox.get()
+        time_interval = int(self.time_interval_size_combobox.get())
+        fixed_effects = self.fixed_effects_entry.get() or "Group"
+        random_effects = self.random_effects_entry.get() or "Day"
+
+        # Parse effects
+        fixed_effects = [eff.strip() for eff in fixed_effects.split(',') if eff.strip()]
+        random_effects = [eff.strip() for eff in random_effects.split(',') if eff.strip()]
+
+        # Prepare combined data
+        combined_df = self.prepare_combined_data(variable_name)
+        # Create day intervals
+        day_intervals = self.create_day_intervals(combined_df, day_interval_size)
+
+        # Structure to hold GLMM results
+        results = []
+        all_plot_data = []
+
+        try:
+            # Execute GLMM
+            results.extend(self.execute_glmm(combined_df, fixed_effects, random_effects, day_intervals, variable_name, time_interval))
+            
+            for result in results:
+                plot_data_entry = {
+                    'Minute': result['minute'],
+                    'Day Interval': result['day_interval'],
+                    'Start Day': result['start_day'],
+                    'End Day': result['end_day'],
+                    'Effect': result['effect'],
+                    'Level': result['level'],
+                    'Coefficient': result['coefficient'],
+                    'Z-Score': result['z_score'],
+                    'P-Value': result['p_value']
+                }
+                all_plot_data.append(plot_data_entry)
+
+            # Plot results
+            if isinstance(day_interval_size, str) and day_interval_size.lower() != "all days":
+                start_date_str = self.start_date_combobox.get()
+                end_date_str = self.end_date_combobox.get()
+                self.plot_heatmaps(results, fixed_effects, start_date_str, end_date_str)
+            else:
+                self.plot_glmm_results(results, fixed_effects, grouped_experiments=self.grouped_experiments)
+            
+            # Save plot data and caption
+            filename_prefix = f"glmm_{variable_name}"
+            self.save_plot_data_csv(all_plot_data, filename_prefix, self.common_plots_dir)
+
+            start_date_str = self.start_date_combobox.get()
+            end_date_str = self.end_date_combobox.get()
+
+            caption_text = (
+                f"GLMM analysis on {display_name} using fixed effects ({', '.join(fixed_effects)}) "
+                f"and random effects ({', '.join(random_effects)}). "
+                "Z-scores signify the strength and direction relative to the baseline, "
+                "typically the reference category. P-Values indicate the probability that the effect size is due to chance. "
+                f"Analyzed across groups: {', '.join(entry.get() for entry in self.group_alias_entries)}, \n"
+                f"Categories: {', '.join(entry.get() for entry in self.category_alias_entries)}, \n"
+                f"Experiments: {', '.join(alias_entry.get() for alias_entry in self.alias_entries)}. "
+                f"Time interval size: {time_interval}, Day interval size: {day_interval_size}. "
+                f"Normalization applied: {'Yes' if self.normalize_dim_reduction_var_glmm.get() else 'No'}. "
+                f"Data spans from {start_date_str} to {end_date_str}."
+            )
+
+            self.save_analysis_caption(caption_text, filename_prefix, self.common_plots_dir)
+            
+            self.log("GLMM analysis, plotting, and reporting completed.")
+
+        except Exception as e:
+            self.log(f"Error during GLMM analysis: {e}")
+
+    def save_plot_data_csv(self, plot_data, filename_prefix, save_dir):
+        """Save the plot data to a CSV file."""
+        df = pd.DataFrame(plot_data)
+        timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        csv_filename = f"{filename_prefix}_plot_data_{timestamp}.csv"
+        csv_filepath = os.path.join(save_dir, csv_filename)
+
+        df.to_csv(csv_filepath, index=False)
+        self.log(f"Plot data saved to {csv_filepath}")
+
+    def save_analysis_caption(self, caption, filename_prefix, save_dir):
+        """Save the scientific caption to a text file."""
+        timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        text_filename = f"{filename_prefix}_caption_{timestamp}.txt"
+        text_filepath = os.path.join(save_dir, text_filename)
+
+        with open(text_filepath, 'w') as file:
+            file.write(caption)
+
+        self.log(f"Caption saved to {text_filepath}")
+
+
+
+    def aggregate_daily_data(self, variable_name, experiments):
+        # Combine and calculate daily average for the given variable across all experiments
+        combined_data = []
+        
+        for exp_data in experiments:
+            population_data = exp_data['population_data']
+            var_data = population_data[variable_name]
+
+            # Resampling to daily data and calculating the average
+            daily_avg = var_data.resample('D').mean()
+            combined_data.append(daily_avg)
+        
+        combined_df = pd.concat(combined_data, axis=1)
+        overall_avg = combined_df.mean(axis=1)
+        overall_std = combined_df.std(axis=1)
+        return overall_avg, overall_std
+
+    def extract_data_records(self, exp_data, variable_name, category_name, group_name):
+        """Extracts records for a given experiment and prepares them with necessary metadata."""
+        records = []
+        
+        # Extract variable data from the experiment
+        var_data = exp_data['population_data'][variable_name]
+
+        normalize = self.normalize_dim_reduction_var_glmm.get()
+
+        if normalize:
+            var_data = self.plot_manager.normalize_by_daily_total(var_data)
+
+        start_date = var_data.index.min().date()  # Reference start date for each experiment
+
+        # Iterate through the time series of the variable
+        for timestamp, value in var_data.items():
+            # Compute the day index relative to the start date
+            day_index = (timestamp.date() - start_date).days + 1
+
+            # Append the data to records with all relevant metadata
+            record = {
+                'Timestamp': timestamp,
+                'Day': f"Day {day_index}",
+                'Experiment': exp_data['alias'],  # Consider using an experiment alias or ID
+                'Category': category_name,        # Assigned category for the experiment
+                'Group': group_name,              # Assigned group for the experiment
+                variable_name: value              # Value of the variable at the time point
+            }
+            records.append(record)
+        
+        return records
+
+    def prepare_combined_data(self, variable_name):
+        combined_records = []
+        for category_name, groups in self.grouped_experiments.items():
+            for group_name, experiments in groups.items():
+                for exp_data in experiments:
+                    records = self.extract_data_records(exp_data, variable_name, category_name, group_name)
+                    combined_records.extend(records)
+        
+        combined_df = pd.DataFrame(combined_records)
+        combined_df['Date'] = pd.to_datetime(combined_df['Timestamp'].dt.date)
+        combined_df.set_index('Timestamp', inplace=True)
+        last_day = combined_df['Date'].max()
+        return combined_df[combined_df['Date'] < last_day]
+
+    def execute_glmm(self, data, fixed_effects, random_effects, day_intervals, variable_name, minute_interval):
+        results = []
+        dropna_columns = [variable_name] + fixed_effects
+        data = data.dropna(subset=dropna_columns)
+
+        time_intervals = self.create_time_intervals(minute_interval)
+
+        for effect in fixed_effects + random_effects:
+            data[effect] = data[effect].astype('category')
+
+        for idx, (start_day, end_day) in enumerate(day_intervals):
+            start_day_ts = pd.Timestamp(start_day)
+            end_day_ts = pd.Timestamp(end_day) + pd.Timedelta(hours=23, minutes=59)
+
+            day_segment = data[(data.index >= start_day_ts) & (data.index <= end_day_ts)]
+
+            for start_minute, end_minute in time_intervals:
+                interval_segment = self.segment_data_by_interval(day_segment, start_minute, end_minute)
+                
+                if not interval_segment.empty:
+                    numeric_cols = interval_segment.select_dtypes(include='number').columns
+                    means = interval_segment.groupby(['Day', 'Experiment'])[numeric_cols].mean().reset_index()
+
+                    means['Category'] = interval_segment.groupby(['Day', 'Experiment'])['Category'].first().values
+                    means['Group'] = interval_segment.groupby(['Day', 'Experiment'])['Group'].first().values
+
+                    formula = f"{variable_name} ~ {' + '.join(fixed_effects)}"
+
+                    try:
+                        model = MixedLM.from_formula(formula, groups=means[random_effects[0]], data=means)
+                        fit_result = model.fit(method='lbfgs', maxiter=500, full_output=True)
+                        self.log(f"Successfully fitted GLMM for {start_minute}:00 on interval {idx}.")
+
+                        # Dynamic extraction of coefficients for each fixed effect
+                        for effect in fixed_effects:
+                            # Handle factor levels to extract relevant terms dynamically
+                            levels = means[effect].cat.categories
+                            for level in levels[1:]:  # Skip the reference level
+                                key = f"{effect}[T.{level}]"
+                                coeff = fit_result.params.get(key, np.nan)
+                                p_value = fit_result.pvalues.get(key, np.nan)
+                                std_err = fit_result.bse.get(key, np.nan)
+                                z_score = coeff / std_err if std_err != 0 else np.nan
+                                
+                                if coeff is not np.nan and p_value is not np.nan and z_score is not np.nan:
+                                    results.append({
+                                        'minute': start_minute,
+                                        'day_interval': f"{idx}",
+                                        'start_day':start_day_ts,
+                                        'end_day':end_day_ts,
+                                        'effect': effect,
+                                        'level': level,
+                                        'coefficient': coeff,
+                                        'p_value': p_value,
+                                        'z_score': z_score
+                                    })
+                    except Exception as e:
+                        self.log(f"GLMM fitting failed for {start_minute}:00 on interval {idx}: {e}")
+
+        return results
+
+    def create_time_intervals(self, interval_minutes):
+        intervals = []
+        # Create intervals by incrementing start_minute by the given interval size
+        for start_minute in range(0, 24 * 60, interval_minutes):
+            end_minute = start_minute + interval_minutes
+            # Only add the interval if it ends before or exactly at midnight
+            if end_minute <= 24 * 60:  # 24*60 denotes the total minutes in a day
+                intervals.append((start_minute, end_minute))
+        return intervals
+    
+    def segment_data_by_interval(self, data, start_minute, end_minute):
+        start_time = pd.to_datetime(start_minute, unit='m').time()
+        end_time = pd.to_datetime(end_minute, unit='m').time()
+        return data.between_time(start_time, end_time)
+
+    def save_glmm_results(self, fit_result, variable, start_day, end_day, start_hour, end_hour):
+        filename_prefix = f"glmm_{variable}_{start_day}_{end_day}_{start_hour}_{end_hour}"
+        output_path = os.path.join(self.common_save_dir, f"{filename_prefix}_results.csv")
+        try:
+            summary_frame = fit_result.summary().tables[1]
+            summary_frame.to_csv(output_path, index=False)
+            self.log(f"GLMM results saved to {output_path}")
+        except Exception as e:
+            self.log(f"Error saving GLMM results: {e}")
+
+    def create_day_intervals(self, data, day_interval_size):
+        """Creates intervals of days from the data based on the given interval size.
+
+        Args:
+            data (DataFrame): The combined data containing a DateTime index.
+            day_interval_size (str or int): The size of each interval in days, or "All Days" to use the entire range.
+
+        Returns:
+            list: A list of tuples, where each tuple contains the start and end of a day interval.
+        """
+
+        # Convert day_interval_size to integer if it's not "All Days"
+        if isinstance(day_interval_size, str) and day_interval_size.lower() == "all days":
+            start_date = data.index.min().date()
+            end_date = data.index.max().date()
+            return [(start_date, end_date)]
+
+        interval_size = int(day_interval_size)
+
+        # Get the unique days present in the data's index
+        unique_days = pd.date_range(start=data.index.min().date(), end=data.index.max().date(), freq='D')
+
+        # Implement sliding window
+        intervals = []
+        for i in range(0, len(unique_days) - interval_size + 1):
+            start_day = unique_days[i]
+            end_day = unique_days[i + interval_size - 1]
+            intervals.append((start_day, end_day))
+
+        print(intervals)
+
+        return intervals
+    
+
+    def plot_glmm_results(self, results, fixed_effects, grouped_experiments):
+        # Retrieve the selected display name from the combobox
+        display_name = self.variable_combobox.get()
+
+        # Perform reverse lookup to get the internal variable name
+        internal_var_name = None
+        for key, value in self.variable_name_mapping.items():
+            if value == display_name:
+                internal_var_name = key
+                break
+        
+        if internal_var_name is None:
+            self.log(f"No internal name found for variable: {display_name}")
+            return
+        
+        # Retrieve start date from user input
+        try:
+            start_date_str = self.end_date_combobox.get()
+            start_date = pd.to_datetime(start_date_str) - timedelta(days=1)  # Convert the start date string to a datetime object
+        except Exception as e:
+            self.log(f"Error parsing start date: {e}")
+            return
+
+        # Create a figure with 4 vertically aligned subplots sharing the same x-axis
+        fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(5, 15),sharex=True)
+
+    # Extract information for GLMM plots
+        minutes = [res['minute'] for res in results]
+        
+        # Convert minutes to datetime objects starting from the user-specified start date
+        datetime_values = [start_date + timedelta(minutes=min) for min in minutes]
+
+        coefficients = [res['coefficient'] for res in results]
+        z_scores = [res['z_score'] for res in results]
+        p_values = [res['p_value'] for res in results]
+
+        # Plot Coefficients
+        axes[0].plot(datetime_values , coefficients, marker='o', linestyle='-')
+        axes[0].set_ylabel('Coefficient Value')
+
+        # Plot Z-Scores
+        axes[1].plot(datetime_values , z_scores, marker='o', linestyle='-')
+        axes[1].set_ylabel('Z-Score')
+
+        # Plot P-Values in -log10 scale
+        log_p_values = [-np.log10(p) if p > 0 else np.nan for p in p_values]
+        axes[2].plot(datetime_values , log_p_values, marker='o', linestyle='-')
+        axes[2].set_ylabel('-Log10(P-Value)')
+        axes[2].axhline(-np.log10(0.01), color='r', linestyle='--', label='p = 0.01')
+        axes[2].legend()
+
+        # Configure the x-axis to show labels on the last subplot to avoid overlap
+        #axes[3].set_xticks(hours)
+        #axes[3].set_xticklabels(time_labels, rotation=45)  # Rotate labels for better readability
+
+        # Configure the daily average plot in the 4th subplot
+        plot_args = {
+            'selected_vars': [internal_var_name],
+            'resample_interval': self.resample_entry.get(),
+            'moving_avg_window': self.moving_avg_entry.get(),
+            'start_date_str': self.start_date_combobox.get(),
+            'end_date_str': self.end_date_combobox.get(),
+            'threshold': self.threshold_entry.get(),
+            'experiments_to_plot': [],
+            'groups_to_plot': [],
+            'categories_to_plot': list(grouped_experiments.keys()) if 'Category' in fixed_effects else [],
+            'grouped_experiments': grouped_experiments,
+            'start_hour': self.start_hour_scale.get(),
+            'end_hour': self.end_hour_scale.get(),
+            'ax': axes[3],
+            'normalize': self.normalize_dim_reduction_var_glmm.get(),
+            'display_names': [display_name]
+        }
+        
+        # Add groups if "Group" is in fixed_effects
+        if 'Group' in fixed_effects:
+            plot_args['groups_to_plot'] = [grp for category in grouped_experiments.values() for grp in category.keys()]
+
+        self.plot_manager.plot_daily_average(**plot_args)
+
+        # Adding titles and labels for daily averages subplot
+        axes[3].set_title('Daily Average of Selected Variables')
+        axes[3].set_xlabel('Hour of the Day')
+        axes[3].set_ylabel('Average Value')
+        axes[3].set_title(None)
+        axes[3].legend(fontsize=5)  # Example of specifying a numerical font size
+
+        
+        plt.tight_layout()
+
+
+        filename = f"glmm_results_{'_'.join(fixed_effects)}"
+        self.plot_manager.save_plot(fig, filename)
+        plt.show()
+        plt.close(fig)
+
+    def plot_heatmaps(self, results, fixed_effects, start_date_str, end_date_str):
+        try:
+            # Convert results to DataFrame
+            results_df = pd.DataFrame(results)
+
+            # Aggregate by taking the mean of duplicates
+            results_df = results_df.groupby(['minute', 'effect', 'level', 'day_interval']).mean().reset_index()
+
+            # Convert day_interval to integers for proper sorting
+            results_df['day_interval'] = results_df['day_interval'].astype(int)
+            results_df = results_df.sort_values('day_interval')
+
+            # Convert minutes to hour format
+            results_df['hour'] = results_df['minute'].apply(lambda x: f"{x // 60:02}:{x % 60:02}")
+
+            # For each fixed effect, create and plot heatmaps
+            for effect in fixed_effects:
+                # Filter results for this effect
+                effect_results = results_df[results_df['effect'] == effect]
+
+                # Calculate median day for interval labels
+                median_days = effect_results.groupby('day_interval')['day_interval'].median()
+                median_day_labels = {int(idx): f" {int(day+1)}" for idx, day in median_days.items()}
+
+                # Create pivot tables for z-scores and p-values
+                z_value_heatmap_data = effect_results.pivot(index='day_interval', columns='hour', values='z_score')
+                neg_log_p_heatmap_data = effect_results.pivot(index='day_interval', columns='hour', values='p_value').applymap(lambda p: -np.log10(p) if p > 0 else np.nan)
+
+                # Custom colormap
+                colors = [(0, "blue"), (2/6, "white"), (1, "red")]
+                cmap = mcolors.LinearSegmentedColormap.from_list("custom_cmap", colors)
+
+                # Normalize p-values using log scales
+                norm = mcolors.Normalize(vmin=0, vmax=6)
+
+                # Plotting
+                fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 8))
+
+                # Z-Score Heatmap
+                sns.heatmap(z_value_heatmap_data, annot=False, cmap="viridis",
+                            cbar_kws={'label': 'Z Value'}, ax=axes[0])
+                axes[0].set_title(f'Z-Value for Factor: {effect}', fontsize=14)
+                axes[0].set_xlabel("Time Interval (hour:minute)", fontsize=12)
+                axes[0].set_ylabel("Median Day", fontsize=12)
+                axes[0].set_yticklabels([median_day_labels.get(int(label.get_text()), '') for label in axes[0].get_yticklabels()])
+
+                # -log10(P-Value) Heatmap with custom colormap
+                sns.heatmap(neg_log_p_heatmap_data, annot=False, cmap=cmap,
+                            cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], norm=norm)
+                axes[1].set_title(f'-log10(p-value) for Factor: {effect}', fontsize=14)
+                axes[1].set_xlabel("Time Interval (hour:minute)", fontsize=12)
+                axes[1].set_ylabel("Median Day", fontsize=12)
+                axes[1].set_yticklabels([median_day_labels.get(int(label.get_text()), '') for label in axes[1].get_yticklabels()])
+
+                plt.tight_layout()
+
+                # Save or display the plots
+                filename = f"heatmaps_{effect}_glmm_"
+                self.plot_manager.save_plot(fig, filename)
+                plt.show()
+                plt.close(fig)
+
+        except Exception as e:
+            self.log(f"Error during plotting heatmaps: {e}")
+
+
+
+
+
+    # def plot_glmm_results(self, results):
+    #     minutes = [res['minute'] for res in results]
+    #     coefficients = [res['coefficient'] for res in results]
+    #     p_values = [res['p_value'] for res in results]
+
+    #     # Convert p-values to -log10 scale
+    #     log_p_values = [-np.log10(p) if p > 0 else np.nan for p in p_values]
+
+    #     fig, ax = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
+
+    #     ax[0].plot(minutes, coefficients, marker='o', linestyle=None)
+    #     ax[0].set_title('GLMM Coefficients for Category by Time of Day')
+    #     ax[0].set_ylabel('Coefficient Value')
+
+    #     ax[1].plot(minutes, log_p_values, marker='o', linestyle=None)
+    #     ax[1].set_title('GLMM P-Values in Log Scale for Category by Time of Day')
+    #     ax[1].set_ylabel('-Log10(P-Value)')
+    #     ax[1].set_xlabel('Time of Day')
+
+    #     # Convert minute ticks to "Time of Day"
+    #     def minutes_to_time(minute):
+    #         return (datetime.min + timedelta(minutes=minute)).time().strftime('%H:%M')
+
+    #     # Convert minutes into "HH:MM" format for x-ticks
+    #     time_ticks = [minutes_to_time(minute) for minute in minutes]
+    #     ax[1].set_xticks(minutes)
+    #     ax[1].set_xticklabels(time_ticks, rotation=45)  # Rotate for better readability
+
+    #     ax[1].axhline(-np.log10(0.01), color='r', linestyle='--', label='p = 0.01')  # Optional: mark significance threshold
+    #     ax[1].legend()
+
+    #     plt.tight_layout()
+    #     plt.show()
+
+
+
+
+
+
+
 
 
     # def plot_bar_graph(self):

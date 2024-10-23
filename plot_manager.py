@@ -208,7 +208,8 @@ class PlotManager:
         start_date = pd.to_datetime(start_date_str)
         end_date = pd.to_datetime(end_date_str)
 
-        print(display_names)
+
+       #print(display_names)
 
         # if ax is None:
         #     fig, ax = plt.subplots(figsize=(10, 6))
@@ -310,6 +311,8 @@ class PlotManager:
                             group_legend_added = True
                         else:
                             ax.fill_between(group_daily_avg.index, group_daily_avg - group_daily_std, group_daily_avg + group_daily_std, alpha=0.3, color=color)
+
+
 
         unified_index = pd.date_range(start=start_date, end=end_date, freq=resample_interval or 'T')
         for category_name in categories_to_plot:
@@ -681,104 +684,49 @@ class PlotManager:
             self.log(f"Error in calculate_median_time_interval for {time_interval}: {e}")
             return np.nan
 
-    def plot_heatmaps(self, effect_size_df, p_values_df, z_values_df, factor, method, start_date_str, end_date_str):
-        try:
-            # Creating pivot tables
-            effect_size_heatmap_data = effect_size_df.pivot(index="days_since_start", columns="median_time_interval", values="effect_size")
-            neg_log_p_heatmap_data = p_values_df.pivot(index="days_since_start", columns="median_time_interval", values="neg_log_p_value")
-            z_value_heatmap_data = z_values_df.pivot(index="days_since_start", columns="median_time_interval", values="z_value")
+    # def plot_heatmaps(self, effect_size_df, p_values_df, z_values_df, factor, method, start_date_str, end_date_str):
+    #     try:
+    #         # Creating pivot tables
+    #         effect_size_heatmap_data = effect_size_df.pivot(index="days_since_start", columns="median_time_interval", values="effect_size")
+    #         neg_log_p_heatmap_data = p_values_df.pivot(index="days_since_start", columns="median_time_interval", values="neg_log_p_value")
+    #         z_value_heatmap_data = z_values_df.pivot(index="days_since_start", columns="median_time_interval", values="z_value")
 
-            # Plotting
-            fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(24, 10))
+    #         # Plotting
+    #         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(24, 10))
 
-            for ax in axes.flat:
-                for item in ([ax.title, ax.xaxis.label, ax.yaxis.label] +
-                             ax.get_xticklabels() + ax.get_yticklabels()):
-                    item.set_fontsize(12)
+    #         for ax in axes.flat:
+    #             for item in ([ax.title, ax.xaxis.label, ax.yaxis.label] +
+    #                          ax.get_xticklabels() + ax.get_yticklabels()):
+    #                 item.set_fontsize(12)
                 
-            sns.heatmap(effect_size_heatmap_data, annot=False, fmt=".2f", cmap="viridis", 
-                        cbar_kws={'label': 'Coefficient' if method == 'glmm' else 'F Value'}, ax=axes[0])
-            axes[0].set_title(f'{"Coefficient" if method == "glmm" else "F Value"} for Factor: {factor}', fontsize=14)
-            axes[0].set_xlabel("Time Interval (median hour)", fontsize=12)
-            axes[0].set_ylabel("Days Since Start", fontsize=12)
+    #         sns.heatmap(effect_size_heatmap_data, annot=False, fmt=".2f", cmap="viridis", 
+    #                     cbar_kws={'label': 'Coefficient' if method == 'glmm' else 'F Value'}, ax=axes[0])
+    #         axes[0].set_title(f'{"Coefficient" if method == "glmm" else "F Value"} for Factor: {factor}', fontsize=14)
+    #         axes[0].set_xlabel("Time Interval (median hour)", fontsize=12)
+    #         axes[0].set_ylabel("Days Since Start", fontsize=12)
 
-            p_value_mask = neg_log_p_heatmap_data.isnull()
-            sns.heatmap(neg_log_p_heatmap_data, annot=False, fmt=".2f", cmap="viridis", 
-                        cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], mask=p_value_mask)
-            axes[1].set_title(f'-log10(p-value) for Factor: {factor}', fontsize=14)
-            axes[1].set_xlabel("Time Interval (median hour)", fontsize=12)
-            axes[1].set_ylabel("Days Since Start", fontsize=12)
+    #         p_value_mask = neg_log_p_heatmap_data.isnull()
+    #         sns.heatmap(neg_log_p_heatmap_data, annot=False, fmt=".2f", cmap="viridis", 
+    #                     cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], mask=p_value_mask)
+    #         axes[1].set_title(f'-log10(p-value) for Factor: {factor}', fontsize=14)
+    #         axes[1].set_xlabel("Time Interval (median hour)", fontsize=12)
+    #         axes[1].set_ylabel("Days Since Start", fontsize=12)
 
-            z_value_mask = z_value_heatmap_data.isnull()
-            sns.heatmap(z_value_heatmap_data, annot=False, fmt=".2f", cmap="viridis", 
-                        cbar_kws={'label': 'Z Value'}, ax=axes[2], mask=z_value_mask)
-            axes[2].set_title(f'z-value for Factor: {factor}', fontsize=14)
-            axes[2].set_xlabel("Time Interval (median hour)", fontsize=12)
-            axes[2].set_ylabel("Days Since Start", fontsize=12)
+    #         z_value_mask = z_value_heatmap_data.isnull()
+    #         sns.heatmap(z_value_heatmap_data, annot=False, fmt=".2f", cmap="viridis", 
+    #                     cbar_kws={'label': 'Z Value'}, ax=axes[2], mask=z_value_mask)
+    #         axes[2].set_title(f'z-value for Factor: {factor}', fontsize=14)
+    #         axes[2].set_xlabel("Time Interval (median hour)", fontsize=12)
+    #         axes[2].set_ylabel("Days Since Start", fontsize=12)
 
-            plt.tight_layout()
+    #         plt.tight_layout()
 
-            filename = f"heatmaps_{factor}_{method}_{start_date_str}_to_{end_date_str}"
-            self.save_plot(fig, filename)
-            plt.close(fig)
+    #         filename = f"heatmaps_{factor}_{method}_{start_date_str}_to_{end_date_str}"
+    #         self.save_plot(fig, filename)
+    #         plt.close(fig)
 
-        except Exception as e:
-            self.log(f"Error during plotting heatmaps: {e}")
-
-
-
-    def plot_bar_graph(self, data, var, start_date, end_date, start_time, end_time):
-        # Filter data for specific intervals
-        filtered_data = data.loc[(data.index.date >= pd.to_datetime(start_date).date()) & 
-                                 (data.index.date <= pd.to_datetime(end_date).date()) & 
-                                 (data.index.time >= pd.to_datetime(f'{start_time:02d}:00:00').time()) &
-                                 (data.index.time <= pd.to_datetime(f'{end_time:02d}:00:00').time())]
-
-        if filtered_data.empty:
-            self.log("No data available for the specified interval.")
-            return
-
-        # Calculate means and standard deviations
-        mean_values = filtered_data.groupby('Condition').mean()
-        std_values = filtered_data.groupby('Condition').std()
-
-        # Plot bar graph
-        fig, ax = plt.subplots()
-        mean_values[var].plot(kind='bar', yerr=std_values[var], ax=ax, capsize=4)
-        ax.set_title(f'Mean {var} by Condition')
-        ax.set_xlabel('Condition')
-        ax.set_ylabel(var)
-        
-        # Save and show plot
-        filename = f"bar_graph_{var}_from_{start_date}_to_{end_date}_time_{start_time}_to_{end_time}"
-        self.save_plot(fig, filename)
-        plt.show()
-
-    def plot_scatter_plot(self, data, var, start_date, end_date, start_time, end_time):
-        # Filter data for specific intervals
-        filtered_data = data.loc[(data.index.date >= pd.to_datetime(start_date).date()) & 
-                                 (data.index.date <= pd.to_datetime(end_date).date()) & 
-                                 (data.index.time >= pd.to_datetime(f'{start_time:02d}:00:00').time()) &
-                                 (data.index.time <= pd.to_datetime(f'{end_time:02d}:00:00').time())]
-
-        if filtered_data.empty:
-            self.log("No data available for the specified interval.")
-            return
-
-        # Plot scatter plot
-        fig, ax = plt.subplots()
-        for condition, group_data in filtered_data.groupby('Condition'):
-            ax.scatter(group_data.index, group_data[var], label=condition)
-        
-        ax.set_title(f'{var} by Condition')
-        ax.set_xlabel('Time')
-        ax.set_ylabel(var)
-        ax.legend()
-        
-        # Save and show plot
-        filename = f"scatter_plot_{var}_from_{start_date}_to_{end_date}_time_{start_time}_to_{end_time}"
-        self.save_plot(fig, filename)
-        plt.show()
+    #     except Exception as e:
+    #         self.log(f"Error during plotting heatmaps: {e}")
 
     def normalize_by_daily_total(self, data):
 
@@ -882,3 +830,68 @@ class PlotManager:
 
         plt.show()
         plt.close(fig)
+
+
+
+####### GLMM plotting 
+
+    def plot_glmm_results(self, results, fixed_effects, grouped_experiments):
+        # Create a figure with 4 vertically aligned subplots
+        fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(14, 16))
+
+        # Extract information for GLMM plots
+        minutes = [res['minute'] for res in results]
+        coefficients = [res['coefficient'] for res in results]
+        z_scores = [res['z_score'] for res in results]
+        p_values = [res['p_value'] for res in results]
+
+        # Plot Coefficients
+        axes[0].plot(minutes, coefficients, marker='o', linestyle='-')
+        axes[0].set_title('GLMM Coefficients')
+        axes[0].set_ylabel('Coefficient Value')
+
+        # Plot Z-Scores
+        axes[1].plot(minutes, z_scores, marker='o', linestyle='-')
+        axes[1].set_title('GLMM Z-Scores')
+        axes[1].set_ylabel('Z-Score')
+
+        # Plot P-Values in -log10 scale
+        log_p_values = [-np.log10(p) if p > 0 else np.nan for p in p_values]
+        axes[2].plot(minutes, log_p_values, marker='o', linestyle='-')
+        axes[2].set_title('GLMM P-Values (-log10)')
+        axes[2].set_ylabel('-Log10(P-Value)')
+        axes[2].axhline(-np.log10(0.01), color='r', linestyle='--', label='p = 0.05')
+        axes[2].legend()
+
+        # Configure the daily average plot in the 4th subplot
+        plot_args = {
+            'selected_vars': ['numb_mosquitos_flying'],  # Change this to the desired variable
+            'resample_interval': "1T",
+            'moving_avg_window': "20",
+            'start_date_str': "2023-03-01",  # Modify this to the actual start date if needed
+            'end_date_str': "2023-03-10",    # Modify this to the actual end date if needed
+            'threshold': None,
+            'experiments_to_plot': [],
+            'groups_to_plot': [],
+            'categories_to_plot': list(grouped_experiments.keys()) if 'Category' in fixed_effects else [],
+            'grouped_experiments': grouped_experiments,
+            'start_hour': 0,
+            'end_hour': 23,
+            'ax': axes[3],
+            'normalize': False,
+            'display_names': ['Flying Mosquitoes']
+        }
+        
+        # Add groups if "Group" is in fixed_effects
+        if 'Group' in fixed_effects:
+            plot_args['groups_to_plot'] = [grp for category in grouped_experiments.values() for grp in category.keys()]
+
+        self.plot_daily_average(**plot_args)
+
+        # Adding titles and labels for daily averages subplot
+        axes[3].set_title('Daily Average of Selected Variables')
+        axes[3].set_xlabel('Hour of the Day')
+        axes[3].set_ylabel('Average Value')
+
+        plt.tight_layout()
+        plt.show()
