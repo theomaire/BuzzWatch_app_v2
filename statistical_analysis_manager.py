@@ -126,20 +126,22 @@ class StatisticalAnalysisManager:
     
 
     def run_dimensionality_reduction(self, data, method='pca', n_components=3):
+        explained_variance = None
+
         if method == 'pca':
             model = PCA(n_components=n_components)
+            reduced_data = model.fit_transform(data)
+            explained_variance = model.explained_variance_ratio_
         elif method == 't-sne':
             model = TSNE(n_components=n_components, metric='euclidean')
+            reduced_data = model.fit_transform(data)
         elif method == 'umap':
             model = umap.UMAP(n_components=n_components, metric='euclidean')
+            reduced_data = model.fit_transform(data)
         else:
             raise ValueError(f"Unknown method: {method}")
-            
-        reduced_data = model.fit_transform(data)
 
-        
-
-        return reduced_data
+        return reduced_data, explained_variance
     
 
 

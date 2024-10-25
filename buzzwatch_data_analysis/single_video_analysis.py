@@ -3,10 +3,10 @@ import numpy as np
 import cv2
 import os
 import pickle
-from resting_obj_tracker import *
-from moving_obj_tracker import *
-from misc_functions import *
-from mosquito_obj_tracker import *
+from buzzwatch_data_analysis.resting_obj_tracker import *
+from buzzwatch_data_analysis.moving_obj_tracker import *
+from buzzwatch_data_analysis.misc_functions import *
+from buzzwatch_data_analysis.mosquito_obj_tracker import *
 import copy
 import yaml
 import time

@@ -13,9 +13,9 @@ from threading import Thread
 #PATH_TO_MODULE = "/Volumes/BBB/Theo_projects/BuzzWatch/buzzwatch_analysis_module/"
 # PATH_TO_MODULE = "/Users/tmaire/Documents/BuzzWatch_analysis/"
 # sys.path.append(PATH_TO_MODULE)  # ADD PATH OF THE BUZZWATCH PYTHON MODULE
-from experiment_analysis import buzzwatch_experiment_analysis
-from misc_functions import create_folder
-from single_video_analysis import single_video_analysis
+from buzzwatch_data_analysis.experiment_analysis import buzzwatch_experiment_analysis
+from buzzwatch_data_analysis.misc_functions import create_folder
+from buzzwatch_data_analysis.single_video_analysis import single_video_analysis
 from logger import MultiLogger
 
 

@@ -417,8 +417,8 @@ class PlotManager:
                     var_data = self.normalize_by_daily_total(var_data)
                 var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour}:00', f'{end_hour}:00')
 
-                if resample_interval:
-                    var_data = var_data.resample(resample_interval).mean()
+                #if resample_interval:
+                #    var_data = var_data.resample(resample_interval).mean()
 
 
 
@@ -448,8 +448,8 @@ class PlotManager:
                                 var_data = self.normalize_by_daily_total(var_data)
                             var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour}:00', f'{end_hour}:00')
 
-                            if resample_interval:
-                                var_data = var_data.resample(resample_interval).mean()
+                            #if resample_interval:
+                            #    var_data = var_data.resample(resample_interval).mean()
 
                             group_data[var].append(var_data.resample('D').mean())
 
@@ -486,8 +486,8 @@ class PlotManager:
                             var_data = self.normalize_by_daily_total(var_data)
                         var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour}:00', f'{end_hour}:00')
 
-                        if resample_interval:
-                            var_data = var_data.resample(resample_interval).mean()
+                        #if resample_interval:
+                         #   var_data = var_data.resample(resample_interval).mean()
 
                         group_data[var].append(var_data.resample('D').mean())
 
@@ -750,7 +750,8 @@ class PlotManager:
         return normalized_series
     
 ###################### Dimension reduction ###############
-    def visualize_reduced_data(self, reduced_data, experiments, method, days, plot_days, interval_hours, data_level, normalize):
+    def visualize_reduced_data(self, reduced_data, experiments, method, days, plot_days, interval_hours, data_level, normalize, explained_variance):
+
         experiment_to_group_category = {}
         for category_name, groups in experiments.items():
             for group_name, experiment_list in groups.items():
@@ -759,8 +760,12 @@ class PlotManager:
                     if alias:
                         experiment_to_group_category[alias] = (group_name, category_name)
 
-        # Create a square plot
-        fig, ax = plt.subplots(figsize=(8, 8))
+        # Define figure and grid layout
+        fig = plt.figure(figsize=(8, 5))  # Adjust to widen the space for square plot area
+        gs = GridSpec(nrows=1, ncols=2, width_ratios=[5, 1])  # Allocate more space for the plot
+
+        ax = fig.add_subplot(gs[0])
+        ax.set_box_aspect(1)  # This makes the data area square
 
         start_date = pd.to_datetime(days[0])
         category_handles = {}
@@ -789,9 +794,10 @@ class PlotManager:
                 row[0], row[1],
                 color=color,
                 marker=marker,
-                s=50,
-                alpha=0.5,
-                label=plot_label
+                s=60,
+                alpha=0.8,
+                label=plot_label,
+                edgecolors='none'
             )
 
             if category_name and legend_label not in legend_entries:
@@ -812,16 +818,26 @@ class PlotManager:
                 handles.append(handle)
                 legend_labels.append(f"{label}_{category}")
 
+        # Set titles and labels with variance explained
         ax.set_title(f'{method.upper()} Dimensionality Reduction')
-        ax.set_xlabel("Component 1")
-        ax.set_ylabel("Component 2")
-        
-        # Adjust legend properties
-        ax.legend(handles=handles, labels=legend_labels, title='Group/Category', fontsize='xx-small', loc='upper right', ncol=2, handletextpad=0.5, columnspacing=1, borderaxespad=0.5)
-        
-        ax.grid(True)
+        ax.set_xlabel(f"Component 1 ({explained_variance[0]*100:.2f}% variance)")
+        ax.set_ylabel(f"Component 2 ({explained_variance[1]*100:.2f}% variance)")
 
-        # Adjust layout to fit the legend within the plot
+        # Create the legend in a separate subplot
+        ax_legend = fig.add_subplot(gs[1])
+        ax_legend.axis('off')
+        ax_legend.legend(
+            handles=handles,
+            labels=legend_labels,
+            title='Group/Category',
+            fontsize='small',
+            loc='center',
+            handletextpad=0.5,
+            columnspacing=1,
+            borderaxespad=0.5
+        )
+
+        # Ensure the layout fits within the boundaries
         plt.tight_layout()
 
         filename = f"{method}_scatter_{interval_hours}mins_{data_level}_Normalize_{normalize}"
@@ -830,6 +846,7 @@ class PlotManager:
 
         plt.show()
         plt.close(fig)
+
 
 
 

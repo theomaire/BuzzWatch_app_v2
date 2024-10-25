@@ -81,7 +81,7 @@ class ComparisonTabManager:
         self.glmm_analysis_manager = GLMMAnalysisManager(self.log, self.glmm_results_dir)
 
     def compute_sugar_feeding_index(self, population_data):
-        sugar_feeding_index = population_data['numb_mosquitos_sugar'] + population_data['numb_mosquitos_hs']
+        sugar_feeding_index = population_data['numb_mosquitos_sugar'] - population_data['numb_mosquitos_hs']
         # Optionally apply more complex transformations or filters if needed
         return sugar_feeding_index
     
@@ -469,13 +469,27 @@ class ComparisonTabManager:
                             full_population_data[column] = full_population_data[column].div(alive_mosquitos).fillna(0)
 
                     full_individual_data = analyzed_data.get('individual_data', None)
+                    # print(alias)
+                    # print(full_individual_data)
+                    # if alias == "Cage03_KAK":
+                    #     plt.plot(full_individual_data["flight_duration"])
+                    #     plt.show()
                     if full_individual_data is not None:
                         full_individual_data = full_individual_data[(full_individual_data.index >= start_date) & (full_individual_data.index <= end_date)]
                         normalized_start_date = full_individual_data.index.min().normalize()  # Account for cropped data
                         shift_offset = common_start_date - normalized_start_date
                         full_individual_data.index = full_individual_data.index + shift_offset
                         full_individual_data = full_individual_data[~full_individual_data.index.duplicated(keep='first')]
+                        
+
+                        current_frequency = pd.infer_freq(full_individual_data.index)
+                        if current_frequency != 'T':
+                            full_individual_data = full_individual_data.sort_index()
+                            full_individual_data = full_individual_data.resample('T').mean()
+
                         full_individual_data = full_individual_data.reindex(unified_index).interpolate(method='time')
+                        
+
 
                     summary_data = analyzed_data.get('summary_data', None)
 
@@ -1300,7 +1314,7 @@ class ComparisonTabManager:
         #print(feature_data)
         method = self.reduction_method_combobox.get().lower()
         
-        reduced_data = self.stat_analysis_manager.run_dimensionality_reduction(feature_data, method=method)
+        reduced_data,explained_variance = self.stat_analysis_manager.run_dimensionality_reduction(feature_data, method=method)
         #print(reduced_data)
         #print(reduced_data)
         # Prepare reduced dataframe (for example purposes) to include in visualization call
@@ -1308,7 +1322,7 @@ class ComparisonTabManager:
 
         plot_days = self.plot_days_annotation.get()
         # Use PlotManager to visualize the reduced data
-        self.plot_manager.visualize_reduced_data(reduced_df, self.grouped_experiments, method, days,plot_days,interval_hours,data_level,self.normalize_dim_reduction_var.get())
+        self.plot_manager.visualize_reduced_data(reduced_df, self.grouped_experiments, method, days,plot_days,interval_hours,data_level,self.normalize_dim_reduction_var.get(),explained_variance)
 
 
     def get_combined_data_for_dimension_reduction(self, var, data_level):
@@ -1611,6 +1625,16 @@ class ComparisonTabManager:
         # Create day intervals
         day_intervals = self.create_day_intervals(combined_df, day_interval_size)
 
+        # Use categorical variables
+        for effect in fixed_effects:
+            if effect in combined_df.columns:
+                combined_df[effect] = combined_df[effect].astype('category')
+
+        # Determine baseline from GLMM design matrix encoding
+        baseline_dict = {}
+        for effect in fixed_effects:
+            baseline_dict[effect] = combined_df[effect].cat.categories[0]  # Get the first category, assuming sorted order
+
         # Structure to hold GLMM results
         results = []
         all_plot_data = []
@@ -1638,14 +1662,16 @@ class ComparisonTabManager:
             effects_summary = '_'.join(eff[:3] for eff in fixed_effects)  # e.g., "Gro" for Group
             base_filename = f"glmm_{variable_name}_{effects_summary}_{timestamp}"
 
-
+            # Plot results with baseline details
+            baseline_info = ', '.join([f"{eff}: {base}" for eff, base in baseline_dict.items()])
+        
             # Plot results
             if isinstance(day_interval_size, str) and day_interval_size.lower() != "all days":
                 start_date_str = self.start_date_combobox.get()
                 end_date_str = self.end_date_combobox.get()
-                self.plot_heatmaps(results, fixed_effects, start_date_str, end_date_str,base_filename)
+                self.plot_heatmaps(results, fixed_effects, start_date_str, end_date_str,base_filename,baseline_info)
             else:
-                self.plot_glmm_results(results, fixed_effects, grouped_experiments=self.grouped_experiments,base_filename=base_filename)
+                self.plot_glmm_results(results, fixed_effects, grouped_experiments=self.grouped_experiments,base_filename=base_filename, baseline=baseline_info)
             
             # Save plot data and caption
             filename_prefix = f"glmm_{variable_name}"
@@ -1657,8 +1683,9 @@ class ComparisonTabManager:
             caption_text = (
                 f"GLMM analysis on {display_name} using fixed effects ({', '.join(fixed_effects)}) "
                 f"and random effects ({', '.join(random_effects)}). "
-                "Z-scores signify the strength and direction relative to the baseline, "
-                "typically the reference category. P-Values indicate the probability that the effect size is due to chance. "
+                f"Baseline levels: {baseline_info}. "
+                "Z-scores signify the strength and direction relative to this baseline. "
+                "P-Values indicate the probability that the effect size is due to chance. "
                 f"Analyzed across groups: {', '.join(entry.get() for entry in self.group_alias_entries)}, \n"
                 f"Categories: {', '.join(entry.get() for entry in self.category_alias_entries)}, \n"
                 f"Experiments: {', '.join(alias_entry.get() for alias_entry in self.alias_entries)}. "
@@ -1666,6 +1693,7 @@ class ComparisonTabManager:
                 f"Normalization applied: {'Yes' if self.normalize_dim_reduction_var_glmm.get() else 'No'}. "
                 f"Data spans from {start_date_str} to {end_date_str}."
             )
+
 
             self.save_analysis_caption(caption_text, filename_prefix, self.common_plots_dir)
             
@@ -1714,17 +1742,28 @@ class ComparisonTabManager:
         overall_std = combined_df.std(axis=1)
         return overall_avg, overall_std
 
-    def extract_data_records(self, exp_data, variable_name, category_name, group_name):
+    def extract_data_records(self, exp_data, variable_name, category_name, group_name,data_type):
         """Extracts records for a given experiment and prepares them with necessary metadata."""
         records = []
-        
-        # Extract variable data from the experiment
-        var_data = exp_data['population_data'][variable_name]
+        df = exp_data[f'{data_type}_data']
+        var_data = df[variable_name]
 
         normalize = self.normalize_dim_reduction_var_glmm.get()
 
         if normalize:
             var_data = self.plot_manager.normalize_by_daily_total(var_data)
+
+        if data_type == "individual":
+                threshold_value = float(5)
+                #var_data = var_data[var_data > threshold_value]
+                var_data = var_data[var_data > threshold_value]
+                var_data = var_data.interpolate()
+                var_data = var_data.resample("1T").mean()
+                
+
+
+
+
 
         start_date = var_data.index.min().date()  # Reference start date for each experiment
 
@@ -1746,19 +1785,37 @@ class ComparisonTabManager:
         
         return records
 
+    # Example of data extraction and preparation adjustment
     def prepare_combined_data(self, variable_name):
         combined_records = []
         for category_name, groups in self.grouped_experiments.items():
             for group_name, experiments in groups.items():
+                data_type = 'population' if self.is_population_var(variable_name) else 'individual'
+                
                 for exp_data in experiments:
-                    records = self.extract_data_records(exp_data, variable_name, category_name, group_name)
+                    df = exp_data[f'{data_type}_data']
+                    if variable_name not in df.columns:
+                        continue
+                    
+                    # Choose appropriate granularity of aggregation
+                    records = self.extract_data_records(exp_data, variable_name, category_name, group_name, data_type)
                     combined_records.extend(records)
         
         combined_df = pd.DataFrame(combined_records)
         combined_df['Date'] = pd.to_datetime(combined_df['Timestamp'].dt.date)
         combined_df.set_index('Timestamp', inplace=True)
         last_day = combined_df['Date'].max()
+
+        if variable_name == "flight_duration" or variable_name == "average_speed":
+            first_day = combined_df['Date'].min()
+            combined_df =  combined_df[combined_df['Date'] > first_day]
+
+
         return combined_df[combined_df['Date'] < last_day]
+
+    # Utility method to determine data type based on variable name
+    def is_population_var(self, var):
+        return var in self.variable_name_mapping and self.variable_name_mapping[var] != 'flight_duration' and self.variable_name_mapping[var] != 'average_speed'
 
     def execute_glmm(self, data, fixed_effects, random_effects, day_intervals, variable_name, minute_interval):
         results = []
@@ -1880,7 +1937,7 @@ class ComparisonTabManager:
         return intervals
     
 
-    def plot_glmm_results(self, results, fixed_effects, grouped_experiments,base_filename):
+    def plot_glmm_results(self, results, fixed_effects, grouped_experiments,base_filename,baseline):
         # Retrieve the selected display name from the combobox
         display_name = self.variable_combobox.get()
 
@@ -1904,7 +1961,7 @@ class ComparisonTabManager:
             return
 
         # Create a figure with 4 vertically aligned subplots sharing the same x-axis
-        fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(5, 15),sharex=True)
+        fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(5, 5),sharex=True)
 
     # Extract information for GLMM plots
         minutes = [res['minute'] for res in results]
@@ -1916,20 +1973,23 @@ class ComparisonTabManager:
         z_scores = [res['z_score'] for res in results]
         p_values = [res['p_value'] for res in results]
 
-        # Plot Coefficients
-        axes[0].plot(datetime_values , coefficients, marker='o', linestyle='-')
-        axes[0].set_ylabel('Coefficient Value')
+        # # Plot Coefficients
+        # axes[0].plot(datetime_values , coefficients, marker='o', linestyle='-')
+        # axes[0].set_ylabel('Coefficient Value')
+        # axes[0].set_title(f"GLMM Coefficients (Baselines: {baseline})")
+
 
         # Plot Z-Scores
-        axes[1].plot(datetime_values , z_scores, marker='o', linestyle='-')
-        axes[1].set_ylabel('Z-Score')
+        axes[0].plot(datetime_values , z_scores, marker='o', linestyle='-',color = 'black' )
+        axes[0].set_ylabel('Z-Score')
 
         # Plot P-Values in -log10 scale
         log_p_values = [-np.log10(p) if p > 0 else np.nan for p in p_values]
-        axes[2].plot(datetime_values , log_p_values, marker='o', linestyle='-')
-        axes[2].set_ylabel('-Log10(P-Value)')
-        axes[2].axhline(-np.log10(0.01), color='r', linestyle='--', label='p = 0.01')
-        axes[2].legend()
+        axes[1].plot(datetime_values , log_p_values, marker='o', linestyle='-',color = 'black')
+        axes[1].set_ylabel('-Log10(P-Value)')
+        axes[1].axhline(-np.log10(0.01), color='r', linestyle='--', label='p = 0.01')
+        axes[1].axhline(-np.log10(0.05), color='b', linestyle='--', label='p = 0.05')
+        axes[1].legend()
 
         # Configure the x-axis to show labels on the last subplot to avoid overlap
         #axes[3].set_xticks(hours)
@@ -1949,7 +2009,7 @@ class ComparisonTabManager:
             'grouped_experiments': grouped_experiments,
             'start_hour': self.start_hour_scale.get(),
             'end_hour': self.end_hour_scale.get(),
-            'ax': axes[3],
+            'ax': axes[2],
             'normalize': self.normalize_dim_reduction_var_glmm.get(),
             'display_names': [display_name]
         }
@@ -1961,11 +2021,11 @@ class ComparisonTabManager:
         self.plot_manager.plot_daily_average(**plot_args)
 
         # Adding titles and labels for daily averages subplot
-        axes[3].set_title('Daily Average of Selected Variables')
-        axes[3].set_xlabel('Hour of the Day')
-        axes[3].set_ylabel('Average Value')
-        axes[3].set_title(None)
-        axes[3].legend(fontsize=5)  # Example of specifying a numerical font size
+        axes[2].set_title('Daily Average of Selected Variables')
+        axes[2].set_xlabel('Hour of the Day')
+        axes[2].set_ylabel('Average Value')
+        axes[2].set_title(None)
+        axes[2].legend(fontsize=5)  # Example of specifying a numerical font size
 
         
         plt.tight_layout()
@@ -1976,7 +2036,7 @@ class ComparisonTabManager:
         plt.show()
         plt.close(fig)
 
-    def plot_heatmaps(self, results, fixed_effects, start_date_str, end_date_str,base_filename):
+    def plot_heatmaps(self, results, fixed_effects, start_date_str, end_date_str, base_filename,baseline):
         try:
             # Convert results to DataFrame
             results_df = pd.DataFrame(results)
@@ -2004,32 +2064,45 @@ class ComparisonTabManager:
                 z_value_heatmap_data = effect_results.pivot(index='day_interval', columns='hour', values='z_score')
                 neg_log_p_heatmap_data = effect_results.pivot(index='day_interval', columns='hour', values='p_value').applymap(lambda p: -np.log10(p) if p > 0 else np.nan)
 
-                # Custom colormap
-                colors = [(0, "blue"), (2/6, "white"), (1, "red")]
-                cmap = mcolors.LinearSegmentedColormap.from_list("custom_cmap", colors)
+                # Custom diverging colormap for Z-scores
+                cmap_z = sns.diverging_palette(150, 275, s=80, l=55, n=11, center="light", as_cmap=True)  # Green (neg) -> White -> Orange (pos)
 
                 # Normalize p-values using log scales
-                norm = mcolors.Normalize(vmin=0, vmax=6)
+                norm = mcolors.Normalize(vmin=0, vmax=5)
 
                 # Plotting
                 fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 8))
 
-                # Z-Score Heatmap
-                sns.heatmap(z_value_heatmap_data, annot=False, cmap="viridis",
-                            cbar_kws={'label': 'Z Value'}, ax=axes[0])
+                # Z-Score Heatmap with diverging colormap
+                sns.heatmap(z_value_heatmap_data, annot=False, cmap=cmap_z,
+                            cbar_kws={'label': 'Z Value'}, ax=axes[0], center=0)
                 axes[0].set_title(f'Z-Value for Factor: {effect}', fontsize=14)
                 axes[0].set_xlabel("Time Interval (hour:minute)", fontsize=12)
                 axes[0].set_ylabel("Median Day", fontsize=12)
                 axes[0].set_yticklabels([median_day_labels.get(int(label.get_text()), '') for label in axes[0].get_yticklabels()])
 
-                # -log10(P-Value) Heatmap with custom colormap
-                sns.heatmap(neg_log_p_heatmap_data, annot=False, cmap=cmap,
-                            cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], norm=norm)
+                # Annotate P-Values
+                def star_annotation(p):
+                    if p > -np.log10(0.01):
+                        return '**'
+                    elif -np.log10(0.05)< p < -np.log10(0.01):
+                        return '*'
+                    return ''
+
+                p_value_annotations = neg_log_p_heatmap_data.applymap(star_annotation)
+                # Custom colormap
+                colors = [(0, "blue"), (2/5, "white"), (1, "red")]
+                cmap = mcolors.LinearSegmentedColormap.from_list("custom_cmap", colors)
+                # -log10(P-Value) Heatmap with annotations
+                sns.heatmap(neg_log_p_heatmap_data, annot=p_value_annotations, cmap=cmap,
+                        cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], norm=norm, fmt="", annot_kws={"fontsize": 8})
                 axes[1].set_title(f'-log10(p-value) for Factor: {effect}', fontsize=14)
                 axes[1].set_xlabel("Time Interval (hour:minute)", fontsize=12)
                 axes[1].set_ylabel("Median Day", fontsize=12)
                 axes[1].set_yticklabels([median_day_labels.get(int(label.get_text()), '') for label in axes[1].get_yticklabels()])
 
+                axes[0].set_title(f'Z-Values for {effect} (Baselines: {baseline})')
+                axes[1].set_title(f'-log10(p-value) for {effect} (Baselines: {baseline})')
                 plt.tight_layout()
 
                 # Save or display the plots

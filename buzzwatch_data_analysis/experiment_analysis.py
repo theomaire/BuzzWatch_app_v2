@@ -6,8 +6,8 @@ import os
 import yaml
 from os import listdir
 from os.path import isfile, join
-from misc_functions import *
-from single_video_analysis import *
+from buzzwatch_data_analysis.misc_functions import *
+from buzzwatch_data_analysis.single_video_analysis import *
 import pickle
 import sys
 import numpy as np
