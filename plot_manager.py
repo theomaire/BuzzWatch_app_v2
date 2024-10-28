@@ -4,6 +4,8 @@ import os
 import matplotlib as mpl
 from scipy.stats import sem
 import matplotlib.dates as mdates
+from PIL import Image
+
 
 
 class PlotManager:
@@ -34,7 +36,7 @@ class PlotManager:
         plt.rc('figure', titlesize=BIGGER_SIZE)   # figure title fontsize
 
     def set_default_plot_properties(self):
-        self.set_plot_size(15)
+        self.set_plot_size(10)
         mpl.rcParams['axes.linewidth'] = 1
         mpl.rcParams['pdf.fonttype'] = 42
         mpl.rcParams['ps.fonttype'] = 42
@@ -48,7 +50,7 @@ class PlotManager:
         png_path = os.path.join(self.save_dir, f"{filename}.png")
         pdf_path = os.path.join(self.save_dir, f"{filename}.pdf")
         fig.savefig(png_path, format='png', bbox_inches='tight')
-        fig.savefig(pdf_path, format='pdf', bbox_inches='tight')
+        fig.savefig(pdf_path, format='pdf', bbox_inches='tight',dpi=300,transparent=False)
         self.log(f"Plots saved as {png_path} and {pdf_path}")
 
     def plot_entire_time_series(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None,normalize=False,ax=None,display_names=None):
