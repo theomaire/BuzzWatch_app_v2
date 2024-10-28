@@ -18,7 +18,7 @@ import warnings
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 import matplotlib.colors as mcolors
 import datetime
-from typing import List
+from typing import List, Tuple
 import glob
 import math
 
@@ -1174,118 +1174,116 @@ class ComparisonTabManager:
         self.configure_statistics_analysis_tab(tab)
 
     def configure_statistics_analysis_tab(self, tab):
-        tab.grid_rowconfigure(0, weight=1)
-        tab.grid_rowconfigure(1, weight=1)
-        tab.grid_rowconfigure(2, weight=1)
-        tab.grid_rowconfigure(3, weight=1)
-        tab.grid_columnconfigure(0, weight=1)
-        tab.grid_columnconfigure(1, weight=1)
+        tab.grid_rowconfigure(list(range(4)), weight=1)  # Configure rows to have equal weight
+        tab.grid_columnconfigure(list(range(2)), weight=1)  # Configure columns equally
 
         # Dimensionality reduction section
-        red_frame = tk.LabelFrame(tab, text="Dimensionality Reduction")
-        red_frame.grid(row=0, column=0, columnspan=2, padx=10, pady=5, sticky="nsew")
+        red_frame = tk.LabelFrame(tab, text="Dimensionality Reduction", padx=10, pady=10)
+        red_frame.grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="nsew")
 
         reduction_method_label = tk.Label(red_frame, text="Reduction Method:")
-        reduction_method_label.pack(side=tk.LEFT, padx=5)
-        
-        self.reduction_method_combobox = ttk.Combobox(red_frame, values=["PCA", "t-SNE", "UMAP"],width=10)
+        reduction_method_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+
+        self.reduction_method_combobox = ttk.Combobox(red_frame, values=["PCA", "t-SNE", "UMAP"], width=12)
         self.reduction_method_combobox.set("PCA")
-        self.reduction_method_combobox.pack(side=tk.LEFT, padx=5)
+        self.reduction_method_combobox.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
         data_level_label = tk.Label(red_frame, text="Data Level:")
-        data_level_label.pack(side=tk.LEFT, padx=5)
+        data_level_label.grid(row=1, column=0, padx=5, pady=5, sticky="w")
 
-        self.data_level_combobox = ttk.Combobox(red_frame, values=["Experiments", "Groups", "Categories"],width=10)
+        self.data_level_combobox = ttk.Combobox(red_frame, values=["Experiments", "Groups", "Categories"], width=12)
         self.data_level_combobox.set("Experiments")
-        self.data_level_combobox.pack(side=tk.LEFT, padx=5)
+        self.data_level_combobox.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
         
         interval_label = tk.Label(red_frame, text="Interval (minutes):")
-        interval_label.pack(side=tk.LEFT, padx=5)
+        interval_label.grid(row=2, column=0, padx=5, pady=5, sticky="w")
 
-        self.interval_entry = tk.Entry(red_frame, width=5)
+        self.interval_entry = tk.Entry(red_frame, width=12)
         self.interval_entry.insert(0, "20")  # Default to 20 minutes
-        self.interval_entry.pack(side=tk.LEFT, padx=5)
-
-
+        self.interval_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
         self.normalize_dim_reduction_var = tk.BooleanVar()
         normalize_checkbox = tk.Checkbutton(red_frame, text="Normalize by Total Daily Activity", variable=self.normalize_dim_reduction_var)
-        normalize_checkbox.pack(side=tk.LEFT, padx=5)
+        normalize_checkbox.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
         self.plot_days_annotation = tk.BooleanVar()
         annotate_checkbox = tk.Checkbutton(red_frame, text="Annotate days", variable=self.plot_days_annotation)
-        annotate_checkbox.pack(side=tk.LEFT, padx=5)
+        annotate_checkbox.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
         dimensionality_button = tk.Button(red_frame, text="Run Dimensionality Reduction", command=self.run_dimensionality_reduction)
-        dimensionality_button.pack(side=tk.LEFT, padx=5)
+        dimensionality_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
-        # Analysis method section
-        analysis_frame = tk.LabelFrame(tab, text="GLMM Analysis Configuration")
-        analysis_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="nsew")
-        analysis_frame.grid_columnconfigure(0, weight=1)
-        analysis_frame.grid_columnconfigure(1, weight=1)
+        # GLMM Analysis configuration
+        analysis_frame = tk.LabelFrame(tab, text="GLMM Analysis Configuration", padx=10, pady=10)
+        analysis_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(5, 10), sticky="nsew")
 
-        # Variable Selection
         variable_label = tk.Label(analysis_frame, text="Variable:")
-        variable_label.grid(row=0, column=0, padx=5, sticky="w")
+        variable_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
 
-        # Update combo box with display names
-        self.variable_combobox = ttk.Combobox(
-            analysis_frame, 
-            values=list(self.variable_name_mapping.values())
-        )
-        self.variable_combobox.set("numb_mosquitos_flying")  # Ensure this matches a display name
-        self.variable_combobox.grid(row=0, column=1, padx=5, sticky="w")
+        self.variable_combobox = ttk.Combobox(analysis_frame, values=list(self.variable_name_mapping.values()), width=20)
+        self.variable_combobox.set("numb_mosquitos_flying")
+        self.variable_combobox.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-        # Day Interval Size
+        start_date_label = tk.Label(analysis_frame, text="Start Date:")
+        start_date_label.grid(row=1, column=0, padx=5, pady=5, sticky="w")
+
+        self.start_date_combobox_glmm = ttk.Combobox(analysis_frame, width=15)
+        self.start_date_combobox_glmm.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+
+        end_date_label = tk.Label(analysis_frame, text="End Date:")
+        end_date_label.grid(row=1, column=2, padx=5, pady=5, sticky="w")
+
+        self.end_date_combobox_glmm = ttk.Combobox(analysis_frame, width=15)
+        self.end_date_combobox_glmm.grid(row=1, column=3, padx=5, pady=5, sticky="ew")
+
+        self.populate_date_combobox(self.start_date_combobox_glmm, self.grouped_experiments, 'start')
+        self.populate_date_combobox(self.end_date_combobox_glmm, self.grouped_experiments, 'end')
+
         day_interval_label = tk.Label(analysis_frame, text="Day Interval Size (days):")
-        day_interval_label.grid(row=1, column=0, padx=5, sticky="w")
+        day_interval_label.grid(row=2, column=0, padx=5, pady=5, sticky="w")
 
-        self.day_interval_size_combobox = ttk.Combobox(analysis_frame, values=[str(i) for i in range(3, 8)] + ["All Days"])
+        self.day_interval_size_combobox = ttk.Combobox(analysis_frame, values=[str(i) for i in range(3, 8)] + ["All Days"], width=15)
         self.day_interval_size_combobox.set("All Days")
-        self.day_interval_size_combobox.grid(row=1, column=1, padx=5, sticky="w")
+        self.day_interval_size_combobox.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
-        # adjust the logic to enforce a 10-minute update
+        self.day_interval_size_combobox.bind(
+            "<<ComboboxSelected>>",
+            lambda e: (
+                self.populate_date_combobox(self.start_date_combobox_glmm, self.grouped_experiments, date_type='start'),
+                self.populate_date_combobox(self.end_date_combobox_glmm, self.grouped_experiments, date_type='end')
+            ) if self.day_interval_size_combobox.get() == "All Days" else None
+        )
+
         time_interval_label = tk.Label(analysis_frame, text="Time Interval Size (minutes):")
-        time_interval_label.grid(row=2, column=0, padx=5, sticky="w")
+        time_interval_label.grid(row=3, column=0, padx=5, pady=5, sticky="w")
 
-        self.time_interval_size_combobox = ttk.Combobox(analysis_frame, values=[str(i) for i in range(10, 61, 10)])
+        self.time_interval_size_combobox = ttk.Combobox(analysis_frame, values=[str(i) for i in range(10, 61, 10)], width=15)
         self.time_interval_size_combobox.set("30")
-        self.time_interval_size_combobox.grid(row=2, column=1, padx=5, sticky="w")
+        self.time_interval_size_combobox.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
-        # Fixed Effects
         fixed_effects_label = tk.Label(analysis_frame, text="Fixed Effect:")
-        fixed_effects_label.grid(row=3, column=0, padx=5, sticky="w")
+        fixed_effects_label.grid(row=4, column=0, padx=5, pady=5, sticky="w")
 
-        self.fixed_effects_entry = ttk.Combobox(analysis_frame, values=["Group", "Category"])
+        self.fixed_effects_entry = ttk.Combobox(analysis_frame, values=["Group", "Category"], width=15)
         self.fixed_effects_entry.set("Category")
-        self.fixed_effects_entry.grid(row=3, column=1, padx=5)
+        self.fixed_effects_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
 
-        # Random Effects
         random_effects_label = tk.Label(analysis_frame, text="Random Effect:")
-        random_effects_label.grid(row=4, column=0, padx=5, sticky="w")
+        random_effects_label.grid(row=5, column=0, padx=5, pady=5, sticky="w")
 
-        self.random_effects_entry = ttk.Combobox(analysis_frame, values=["Experiment", "Day, Experiment"])
+        self.random_effects_entry = ttk.Combobox(analysis_frame, values=["Experiment", "Day, Experiment"], width=15)
         self.random_effects_entry.set("Experiment")
-        self.random_effects_entry.grid(row=4, column=1, padx=5)
-
+        self.random_effects_entry.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
 
         self.normalize_dim_reduction_var_glmm = tk.BooleanVar()
         normalize_checkbox_glmm = tk.Checkbutton(analysis_frame, text="Normalize by Total Daily Activity", variable=self.normalize_dim_reduction_var_glmm)
-        # Changed from pack to grid, using row 5, col 0, spanning 2 columns
-        normalize_checkbox_glmm.grid(row=5, column=0, padx=5, columnspan=2, sticky="w")
+        normalize_checkbox_glmm.grid(row=6, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
-        # Run Analysis Button
         run_analysis_button = tk.Button(analysis_frame, text="Run GLMM Analysis", command=self.run_glmm_analysis)
-        # Updated row number to 6 since checkbox occupies row 5 now
-        run_analysis_button.grid(row=6, column=0, padx=5, pady=5, columnspan=2, sticky="ew")
+        run_analysis_button.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
-
-        # Run All Variables for GLMM Button
         run_all_button = tk.Button(analysis_frame, text="Run All Variables GLMM Analysis", command=self.run_all_variables_glmm_analysis)
-        run_all_button.grid(row=7, column=0, padx=5, pady=5, columnspan=2, sticky="ew")  # Adjust the row as necessary
-
-
+        run_all_button.grid(row=8, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
     def run_dimensionality_reduction(self):
         selected_var = 'numb_mosquitos_flying'
@@ -1604,7 +1602,7 @@ class ComparisonTabManager:
 
 ############# GLMM functions
 
-    def run_glmm_analysis(self):
+    def run_glmm_analysis(self,plot=True):
         # Create a subfolder for all results if needed
         self.glmm_subfolder = os.path.join(self.common_save_dir, 'glmm_analysis_results')
         os.makedirs(self.glmm_subfolder, exist_ok=True)
@@ -1632,8 +1630,15 @@ class ComparisonTabManager:
         fixed_effects = [eff.strip() for eff in fixed_effects.split(',') if eff.strip()]
         random_effects = [eff.strip() for eff in random_effects.split(',') if eff.strip()]
 
+
+        # Retrieve start and end dates from the comboboxes
+        start_date_str = self.start_date_combobox_glmm.get()
+        end_date_str = self.end_date_combobox_glmm.get()
+        start_date = pd.to_datetime(start_date_str)
+        end_date = pd.to_datetime(end_date_str) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+
         # Prepare combined data
-        combined_df = self.prepare_combined_data(variable_name)
+        combined_df = self.prepare_combined_data(variable_name, start_date, end_date)
         # Create day intervals
         day_intervals = self.create_day_intervals(combined_df, day_interval_size)
 
@@ -1654,7 +1659,8 @@ class ComparisonTabManager:
         #### Add the scatter plot here
 
         try:
-            self.visualize_box_plots(combined_df, fixed_effects, random_effects, day_intervals, variable_name, time_interval)
+
+            #self.visualize_box_plots(combined_df, fixed_effects, random_effects, day_intervals, variable_name, time_interval)
 
             # Execute GLMM
             results = self.execute_glmm(combined_df, fixed_effects, random_effects, day_intervals, variable_name, time_interval)
@@ -1669,13 +1675,14 @@ class ComparisonTabManager:
             self.save_glmm_results_extended(results, filename_prefix, self.glmm_subfolder)
 
             # Plot results
-            if isinstance(day_interval_size, str) and day_interval_size.lower() != "all days":
-                start_date_str = self.start_date_combobox.get()
-                end_date_str = self.end_date_combobox.get()
-                self.plot_heatmaps(results, fixed_effects, start_date_str, end_date_str,filename_prefix,baseline_info)
-            else:
-                self.plot_glmm_results(results, fixed_effects, grouped_experiments=self.grouped_experiments,base_filename=filename_prefix, baseline=baseline_info)
-        
+            if plot:
+                if isinstance(day_interval_size, str) and day_interval_size.lower() != "all days":
+                    start_date_str = self.start_date_combobox.get()
+                    end_date_str = self.end_date_combobox.get()
+                    self.plot_heatmaps(results, fixed_effects, start_date_str, end_date_str,filename_prefix,baseline_info)
+                else:
+                    self.plot_glmm_results(results, fixed_effects, grouped_experiments=self.grouped_experiments,base_filename=filename_prefix, baseline=baseline_info)
+            
             start_date_str = self.start_date_combobox.get()
             end_date_str = self.end_date_combobox.get()
 
@@ -1731,11 +1738,11 @@ class ComparisonTabManager:
         overall_std = combined_df.std(axis=1)
         return overall_avg, overall_std
 
-    def extract_data_records(self, exp_data, variable_name, category_name, group_name,data_type):
+    def extract_data_records(self, exp_data, variable_name, category_name, group_name,data_type,start_date,end_date):
         """Extracts records for a given experiment and prepares them with necessary metadata."""
         records = []
         df = exp_data[f'{data_type}_data']
-        var_data = df[variable_name]
+        var_data = df[variable_name].loc[start_date:end_date]
 
         normalize = self.normalize_dim_reduction_var_glmm.get()
 
@@ -1770,7 +1777,7 @@ class ComparisonTabManager:
         return records
 
     # Example of data extraction and preparation adjustment
-    def prepare_combined_data(self, variable_name):
+    def prepare_combined_data(self, variable_name,start_date,end_date):
         combined_records = []
         for category_name, groups in self.grouped_experiments.items():
             for group_name, experiments in groups.items():
@@ -1782,7 +1789,7 @@ class ComparisonTabManager:
                         continue
                     
                     # Choose appropriate granularity of aggregation
-                    records = self.extract_data_records(exp_data, variable_name, category_name, group_name, data_type)
+                    records = self.extract_data_records(exp_data, variable_name, category_name, group_name, data_type,start_date,end_date)
                     combined_records.extend(records)
         
         combined_df = pd.DataFrame(combined_records)
@@ -2028,7 +2035,7 @@ class ComparisonTabManager:
         plt.show()
         plt.close(fig)
 
-    def plot_heatmaps(self, results, fixed_effects, start_date_str, end_date_str, base_filename,baseline):
+    def plot_heatmaps(self, results, fixed_effects, start_date_str, end_date_str, base_filename, baseline):
         try:
             # Convert results to DataFrame
             results_df = pd.DataFrame(results)
@@ -2043,21 +2050,24 @@ class ComparisonTabManager:
             # Convert minutes to hour format
             results_df['hour'] = results_df['minute'].apply(lambda x: f"{x // 60:02}:{x % 60:02}")
 
+            # Calculate median days for intervals
+            day_interval_size = int(self.day_interval_size_combobox.get())
+            interval_labels = [
+                f"Day {(2*idx  + day_interval_size )/ 2}"
+                for idx in range(len(results_df['day_interval'].unique()))
+            ]
+
             # For each fixed effect, create and plot heatmaps
             for effect in fixed_effects:
                 # Filter results for this effect
                 effect_results = results_df[results_df['effect'] == effect]
-
-                # Calculate median day for interval labels
-                median_days = effect_results.groupby('day_interval')['day_interval'].median()
-                median_day_labels = {int(idx): f" {int(day+1)}" for idx, day in median_days.items()}
 
                 # Create pivot tables for z-scores and p-values
                 z_value_heatmap_data = effect_results.pivot(index='day_interval', columns='hour', values='z_score')
                 neg_log_p_heatmap_data = effect_results.pivot(index='day_interval', columns='hour', values='p_value').applymap(lambda p: -np.log10(p) if p > 0 else np.nan)
 
                 # Custom diverging colormap for Z-scores
-                cmap_z = sns.diverging_palette(150, 275, s=80, l=55, n=11, center="light", as_cmap=True)  # Green (neg) -> White -> Orange (pos)
+                cmap_z = sns.diverging_palette(150, 275, s=80, l=55, n=11, center="light", as_cmap=True)
 
                 # Normalize p-values using log scales
                 norm = mcolors.Normalize(vmin=0, vmax=5)
@@ -2066,18 +2076,19 @@ class ComparisonTabManager:
                 fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 8))
 
                 # Z-Score Heatmap with diverging colormap
-                sns.heatmap(z_value_heatmap_data, annot=False, cmap=cmap_z,
-                            cbar_kws={'label': 'Z Value'}, ax=axes[0], center=0)
-                axes[0].set_title(f'Z-Value for Factor: {effect}', fontsize=14)
+                sns.heatmap(z_value_heatmap_data, annot=False, cmap=cmap_z, center=0,
+                            cbar_kws={'label': 'Z Value'}, ax=axes[0],
+                            vmin=-6, vmax=6)
+                axes[0].set_title(f'Z-Values for {effect} (Baselines: {baseline})', fontsize=14)
                 axes[0].set_xlabel("Time Interval (hour:minute)", fontsize=12)
                 axes[0].set_ylabel("Median Day", fontsize=12)
-                axes[0].set_yticklabels([median_day_labels.get(int(label.get_text()), '') for label in axes[0].get_yticklabels()])
+                axes[0].set_yticklabels(interval_labels, rotation=0)
 
                 # Annotate P-Values
                 def star_annotation(p):
                     if p > -np.log10(0.01):
                         return '**'
-                    elif -np.log10(0.05)< p < -np.log10(0.01):
+                    elif -np.log10(0.05) < p < -np.log10(0.01):
                         return '*'
                     return ''
 
@@ -2085,22 +2096,20 @@ class ComparisonTabManager:
                 # Custom colormap
                 colors = [(0, "blue"), (2/5, "white"), (1, "red")]
                 cmap = mcolors.LinearSegmentedColormap.from_list("custom_cmap", colors)
+
                 # -log10(P-Value) Heatmap with annotations
                 sns.heatmap(neg_log_p_heatmap_data, annot=p_value_annotations, cmap=cmap,
-                        cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], norm=norm, fmt="", annot_kws={"fontsize": 8})
-                axes[1].set_title(f'-log10(p-value) for Factor: {effect}', fontsize=14)
+                            cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], norm=norm, fmt="", annot_kws={"fontsize": 8})
+                axes[1].set_title(f'-log10(p-value) for {effect} (Baselines: {baseline})', fontsize=14)
                 axes[1].set_xlabel("Time Interval (hour:minute)", fontsize=12)
                 axes[1].set_ylabel("Median Day", fontsize=12)
-                axes[1].set_yticklabels([median_day_labels.get(int(label.get_text()), '') for label in axes[1].get_yticklabels()])
+                axes[1].set_yticklabels(interval_labels, rotation=0)
 
-                axes[0].set_title(f'Z-Values for {effect} (Baselines: {baseline})')
-                axes[1].set_title(f'-log10(p-value) for {effect} (Baselines: {baseline})')
                 plt.tight_layout()
 
                 # Save or display the plots
                 filename = base_filename + f"_heatmap_{effect}"
                 self.plot_manager.save_plot(fig, filename)
-                #plt.show()
                 plt.close(fig)
 
         except Exception as e:
@@ -2111,50 +2120,77 @@ class ComparisonTabManager:
         self.glmm_subfolder = os.path.join(self.common_save_dir, 'glmm_analysis_results')
         os.makedirs(self.glmm_subfolder, exist_ok=True)
 
-        variables = ['numb_mosquitos_flying_Normalized_False','numb_mosquitos_flying_Normalized_True', 'sugar_feeding_index', 'flight_duration', 'average_speed']
-        # Run analysis for all variables
-        #self.run_all_variables_glmm_analysis()
-        # After completing analysis, generate the summary plot
-        self.summarize_glmm_results(variables)
+        # Define variables with their normalization settings
+        variable_configs = [
+            ('numb_mosquitos_flying', False),
+            ('numb_mosquitos_flying', True),
+            ('numb_mosquitos_sugar', False),
+            ('numb_mosquitos_sugar', True),
+            ('flight_duration', False),
+            ('average_speed', False)
+        ]
+
+        # Get settings from the UI
+        fixed_effects = [self.fixed_effects_entry.get()]
+        random_effects = [eff.strip() for eff in self.random_effects_entry.get().split(',') if eff.strip()]
+        start_date = pd.to_datetime(self.start_date_combobox_glmm.get())
+        end_date = pd.to_datetime(self.end_date_combobox_glmm.get())
+        time_interval = int(self.time_interval_size_combobox.get())
+        day_interval_size = self.day_interval_size_combobox.get()
+
+        for variable, normalize in variable_configs:
+            self.variable_combobox.set(variable)
+            self.normalize_dim_reduction_var_glmm.set(normalize)
+            try:
+                self.run_glmm_analysis(plot=False)
+            except Exception as e:
+                self.log(f"Error processing GLMM for {variable} (Normalized: {normalize}): {e}")
+
+        self.summarize_glmm_results( time_interval, day_interval_size,variable_configs)
 
 
-    def summarize_glmm_results(self, variables: List[str], threshold: float = 0.05) -> None:
-        """
-        Summarizes GLMM results by generating heatmaps for the given variables.
-        Uses the variable names as labels for the plots.
-        """
+
+
+    def summarize_glmm_results(self,  time_interval: int, day_interval_size: str, variable_configs: List[Tuple[str, bool]], threshold: float = 0.05) -> None:
+        """Summarizes GLMM results by generating heatmaps for the given variables with matching settings."""
         scale_plot = 0.8
 
         data_dict = {}
 
-        for variable in variables:
-            pattern = os.path.join(self.glmm_subfolder, f'*{variable}*.csv')
+        for variable, normalize in variable_configs:
+            normalization_tag = "Normalized_True" if normalize else "Normalized_False"
+            pattern = os.path.join(self.glmm_subfolder, f'glmm_{variable}_{normalization_tag}_DayInt{day_interval_size}_TimeInt{time_interval}*.csv')
             csv_files = glob.glob(pattern)
+            #print(csv_files)
 
             for file in csv_files:
                 df = pd.read_csv(file)
+                #print(df)
                 filtered_df = df[df['P-Value'] < threshold]
+                #print(filtered_df)
                 
                 if not filtered_df.empty:
                     filtered_df['Hour'] = filtered_df['Minute'] // 60
                     df_hourly = filtered_df.set_index('Hour')['Z-Score']
-                    #df_hourly = filtered_df.set_index('Hour')['Coefficient']
                 else:
                     df_hourly = pd.Series([np.nan] * 24, index=range(24))
                     
-                data_dict[variable] = df_hourly
+                data_dict[f"{variable}_{normalization_tag}"] = df_hourly
 
-        ordered_data = {var: data_dict[var] for var in variables if var in data_dict}
-        combined_data = pd.DataFrame(ordered_data).transpose().reindex(columns=range(24), fill_value=np.nan)
 
-        num_vars = len(variables)
+       #print(data_dict)
+        #ordered_data = {var: data_dict[var] for var, _ in variable_configs if var in data_dict}
+        #print(ordered_data)
+        combined_data = pd.DataFrame(data_dict).transpose().reindex(columns=range(24), fill_value=np.nan)
+        print(combined_data)
+        num_vars = len(variable_configs)
         fig, axes = plt.subplots(num_vars, 1, figsize=(scale_plot*3, num_vars * 0.3*scale_plot), sharex=True, gridspec_kw={'hspace': 0.2})
 
         cmap_z = sns.diverging_palette(150, 275, s=80, l=55, n=11, center="light", as_cmap=True)
 
         for ax, (label, data) in zip(axes, combined_data.iterrows()):
             sns.heatmap(data.to_frame().transpose(), ax=ax, cmap=cmap_z, cbar=False,
-                        vmin=-6, vmax=6, linewidths=0.5, linecolor='grey',xticklabels=False)
+                        vmin=-6, vmax=6, linewidths=0.5, linecolor='grey', xticklabels=False)
 
             ax.set_ylabel(label.replace('_', ' ').title(), rotation=0, labelpad=5, ha='right')
             ax.set_xlabel('')
@@ -2166,7 +2202,6 @@ class ComparisonTabManager:
         axes[-1].set_xticklabels([f"{h}:00" for h in tick_hours], rotation=45)
         axes[-1].set_xlabel('Hour of the Day')
 
-        # Add a single colorbar to the right of all subplots
         cbar = fig.colorbar(plt.cm.ScalarMappable(cmap=cmap_z, norm=plt.Normalize(vmin=-6, vmax=6)),
                             ax=axes, location='right', fraction=0.02, pad=0.1)
                             
@@ -2174,8 +2209,7 @@ class ComparisonTabManager:
 
         fig.suptitle('Z-Score Heatmaps (P-Value < 0.01)', y=0.98)
 
-        # Save the plot as vector graphics PDF
-        heatmap_filename = "z_score_heatmaps"
+        heatmap_filename = os.path.join(self.glmm_subfolder, "z_score_heatmaps")
         plt.tight_layout(rect=[0, 0, 0.9, 1])
 
         self.plot_manager.save_plot(fig, heatmap_filename)
@@ -2279,27 +2313,60 @@ class ComparisonTabManager:
             self.log(f"Failed to save extended GLMM results: {e}")
 
 
-def print_fit_details(fit_result):
-    """Print detailed information from a GLMM fit result."""
-    try:
-        # Print the model summary
-        print("Model Summary:")
-        print(fit_result.summary())
+    def print_fit_details(fit_result):
+        """Print detailed information from a GLMM fit result."""
+        try:
+            # Print the model summary
+            print("Model Summary:")
+            print(fit_result.summary())
 
-        # Additional details
-        print("\nCoefficients:")
-        print(fit_result.params)
-        
-        print("\nStandard Errors:")
-        print(fit_result.bse)
-        
-        print("\nConfidence Intervals:")
-        print(fit_result.conf_int())
-        
-        print("\nRandom Effects Variance:")
-        print(fit_result.cov_re)
-        
-        print("\nAIC:", fit_result.aic)
-        print("BIC:", fit_result.bic)
-    except Exception as e:
-        print(f"Error while printing fit details: {e}")
+            # Additional details
+            print("\nCoefficients:")
+            print(fit_result.params)
+            
+            print("\nStandard Errors:")
+            print(fit_result.bse)
+            
+            print("\nConfidence Intervals:")
+            print(fit_result.conf_int())
+            
+            print("\nRandom Effects Variance:")
+            print(fit_result.cov_re)
+            
+            print("\nAIC:", fit_result.aic)
+            print("BIC:", fit_result.bic)
+        except Exception as e:
+            print(f"Error while printing fit details: {e}")
+
+
+
+    def populate_date_combobox(self, combobox, experiments, date_type='start'):
+        """Populate the given combobox with date options derived from the experiment data.
+
+        Args:
+            combobox: The combobox to populate.
+            experiments: The list of experiments to derive dates from.
+            date_type: Specify 'start' to default to the earliest date, or 'end' for the latest date.
+        """
+        all_dates = []
+
+        for category in experiments.values():
+            for group in category.values():
+                for exp_data in group:
+                    population_data = exp_data['population_data']
+                    if population_data is not None and not population_data.empty:
+                        all_dates.append(population_data.index.min())
+                        all_dates.append(population_data.index.max())
+
+        if all_dates:
+            start_date = min(all_dates)
+            end_date = max(all_dates)
+            date_range = pd.date_range(start_date, end_date)
+            date_strings = [date.strftime('%Y-%m-%d') for date in date_range]
+            combobox['values'] = date_strings
+
+            # Set default value based on date_type
+            if date_type == 'start':
+                combobox.set(date_strings[0])  # Set to the earliest date
+            elif date_type == 'end':
+                combobox.set(date_strings[-1])  # Set to the latest date
