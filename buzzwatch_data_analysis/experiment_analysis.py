@@ -430,7 +430,7 @@ class buzzwatch_experiment_analysis:
     def user_input_draw_borders_cage(self, force_to_redo):
         if force_to_redo == 1:
             images_mortality_folder = os.path.join(self.folder_analysis, "images_mortality")
-            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png')]
+            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png') and f.startswith('Cage')]
             mortality_images.sort()
             if not mortality_images:
                 print("No images found in images_mortality folder.")
@@ -449,7 +449,7 @@ class buzzwatch_experiment_analysis:
     def user_input_draw_sugar_feeding(self, force_to_redo):
         if force_to_redo == 1:
             images_mortality_folder = os.path.join(self.folder_analysis, "images_mortality")
-            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png')]
+            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png') and f.startswith('Cage')]
             mortality_images.sort()
             if not mortality_images:
                 print("No images found in images_mortality folder.")
@@ -469,7 +469,7 @@ class buzzwatch_experiment_analysis:
         if force_to_redo == 1:
             # Select an image from the images_mortality folder
             images_mortality_folder = os.path.join(self.folder_analysis, "images_mortality")
-            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png')]
+            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png') and f.startswith('Cage')]
             mortality_images.sort()
             if not mortality_images:
                 print("No images found in images_mortality folder.")
@@ -491,7 +491,7 @@ class buzzwatch_experiment_analysis:
         if force_to_redo == 1:
             # Select an image from the images_mortality folder
             images_mortality_folder = os.path.join(self.folder_analysis, "images_mortality")
-            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png')]
+            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png') and f.startswith('Cage')]
             mortality_images.sort()
             if not mortality_images:
                 print("No images found in images_mortality folder.")
@@ -513,7 +513,7 @@ class buzzwatch_experiment_analysis:
         if force_to_redo == 1:
             # Select an image from the images_mortality folder
             images_mortality_folder = os.path.join(self.folder_analysis, "images_mortality")
-            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png')]
+            mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png') and f.startswith('Cage')]
             mortality_images.sort()
             if not mortality_images:
                 print("No images found in images_mortality folder.")
@@ -540,7 +540,7 @@ class buzzwatch_experiment_analysis:
                 self.settings = settings
 
         images_mortality_folder = os.path.join(self.folder_analysis, "images_mortality")
-        mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png')]
+        mortality_images = [f for f in os.listdir(images_mortality_folder) if f.endswith('.png') and f.startswith('Cage')]
         mortality_images.sort()
         if not mortality_images:
             print("No images found in images_mortality folder.")

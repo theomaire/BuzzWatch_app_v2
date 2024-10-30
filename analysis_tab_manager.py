@@ -1,4 +1,7 @@
 from common_imports import *
+from logger import MultiLogger
+
+from threading import Thread
 
 
 class AnalysisTabManager:
@@ -287,6 +290,7 @@ class AnalysisTabManager:
             self.log("No video selected for analysis.")
             return
         video_name = self.video_listbox_svtracking.get(selected_video[0])
+        self.log("Selected_"+video_name)
 
         log_file_path = os.path.join(self.experiment_manager.folder_analysis, "log_analysis", f"{video_name}.log")
         # Construct the new path
@@ -322,7 +326,7 @@ class AnalysisTabManager:
         if not self.experiment_manager.folder_videos:
             self.log("Folder path for videos is not set.")
             return
-        video_files = [f for f in os.listdir(os.path.join(self.experiment_manager.folder_analysis, "images_mortality")) if f.endswith('.png')]
+        video_files = [f for f in os.listdir(os.path.join(self.experiment_manager.folder_analysis, "images_mortality")) if f.endswith('.png') and f.startswith('Cage')]
         video_names = [os.path.splitext(video_file)[0] for video_file in video_files]
         video_names.sort()
 

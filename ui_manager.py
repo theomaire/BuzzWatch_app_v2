@@ -54,7 +54,8 @@ class UIManager:
         self.handle_errors(self.analysis_tab_manager.update_image_listbox, "Error loading individual images")
         self.handle_errors(self.analysis_tab_manager.update_median_image_listbox, "Error loading median images")
         self.handle_errors(lambda: self.analysis_tab_manager.draw_borders_and_update(lambda:self.experiment_manager.update_border_image()), "Error displaying image with borders")
-        self.handle_errors(self.video_tab_manager.update_pkl_listbox, "Error loading tracking files")
+        self.handle_errors(self.analysis_tab_manager.update_video_listbox_svtracking,"Error loading median images")
+        #self.handle_errors(self.video_tab_manager.update_pkl_listbox, "Error loading tracking files")
 
     def handle_errors(self, func, error_message):
         try:
@@ -108,6 +109,7 @@ class UIManager:
         if tab_text == 'Video Inspection & Initialization':
             self.video_manager.set_display_label(self.video_tab_manager.video_label)
             self.video_manager.set_scrollbar(self.video_tab_manager.video_scrollbar)
-        elif tab_text == 'Single Video Tracking':
+        elif tab_text == 'Preliminary Analysis':
+            self.update_ui_after_loading_experiment()
             self.video_manager.set_display_label(self.analysis_tab_manager.tracking_image_label)
             self.video_manager.set_scrollbar(self.analysis_tab_manager.tracking_scrollbar)

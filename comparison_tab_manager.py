@@ -66,7 +66,7 @@ class ComparisonTabManager:
             'numb_mosquitos_flying': 'numb_mosquitos_flying',
             'numb_mosquitos_sugar': 'numb_mosquitos_sugar',
             'numb_mosquitos_hs': 'numb_mosquito_control',
-            'sugar_feeding_index': 'Sugar Feeding Activity',  # New variable
+            'sugar_feeding_index': 'sugar_feeding_index',  # New variable
             'numb_mosquitos_left_ctrl': 'numb_mosquitos_left_ctrl',
             'numb_mosquitos_right_ctrl': 'numb_mosquitos_right_ctrl',
             'flight_duration': 'flight_duration',
@@ -532,11 +532,46 @@ class ComparisonTabManager:
         self.update_date_comboboxes()
         self.populate_selection_checkbuttons()
 
+        # Call function to save data to CSV
+        self.save_data_to_csv()
+
 
 # Example usage
 # finalize_groups() should be called within its proper context
 
+    def save_data_to_csv(self):
+        # Directory for CSVs
+        csv_save_dir = os.path.join(self.common_save_dir, 'csv_data')
+        os.makedirs(csv_save_dir, exist_ok=True)
 
+        for category_name, groups in self.grouped_experiments.items():
+            for group_name, experiments in groups.items():
+                for exp_data in experiments:
+                    exp_alias = exp_data['alias']
+                    population_data = exp_data['population_data']
+                    individual_data = exp_data['individual_data']
+
+                    # Filepath for CSVs
+                    pop_csv_file = os.path.join(csv_save_dir, f"{exp_alias}_population_data.csv")
+                    ind_csv_file = os.path.join(csv_save_dir, f"{exp_alias}_individual_data.csv")
+
+                    # Save data to CSV
+                    if population_data is not None:
+                        population_data.to_csv(pop_csv_file)
+                        self.log(f"Population data saved to {pop_csv_file}")
+                    if individual_data is not None:
+                        individual_data.to_csv(ind_csv_file)
+                        self.log(f"Individual data saved to {ind_csv_file}")
+
+                    # Save metadata
+                    metadata_filepath = os.path.join(csv_save_dir, f"{exp_alias}_metadata.txt")
+                    with open(metadata_filepath, 'w') as metadata_file:
+                        metadata_file.write(f"Experiment Alias: {exp_alias}\n")
+                        metadata_file.write(f"Category: {category_name}\n")
+                        metadata_file.write(f"Group: {group_name}\n")
+                        metadata_file.write(f"Start Date: {exp_data['min_date']}\n")
+                        metadata_file.write(f"End Date: {exp_data['max_date']}\n")
+                        self.log(f"Metadata saved to {metadata_filepath}")
 
 
     def validate_group(self, group_alias_entry):
@@ -1280,10 +1315,10 @@ class ComparisonTabManager:
         normalize_checkbox_glmm.grid(row=6, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
         run_analysis_button = tk.Button(analysis_frame, text="Run GLMM Analysis", command=self.run_glmm_analysis)
-        run_analysis_button.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        run_analysis_button.grid(row=7, column=0, columnspan=1, padx=5, pady=5, sticky="ew")
 
         run_all_button = tk.Button(analysis_frame, text="Run All Variables GLMM Analysis", command=self.run_all_variables_glmm_analysis)
-        run_all_button.grid(row=8, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        run_all_button.grid(row=7, column=1, columnspan=1, padx=5, pady=5, sticky="ew")
 
     def run_dimensionality_reduction(self):
         selected_var = 'numb_mosquitos_flying'
@@ -1320,7 +1355,7 @@ class ComparisonTabManager:
         #print(feature_data)
         method = self.reduction_method_combobox.get().lower()
         
-        reduced_data,explained_variance = self.stat_analysis_manager.run_dimensionality_reduction(feature_data, method=method)
+        reduced_data,explained_variance = self.stat_analysis_manager.run_dimensionality_reduction(feature_data, self.plot_manager, method=method)
         #print(reduced_data)
         #print(reduced_data)
         # Prepare reduced dataframe (for example purposes) to include in visualization call
@@ -1664,7 +1699,7 @@ class ComparisonTabManager:
 
             # Execute GLMM
             results = self.execute_glmm(combined_df, fixed_effects, random_effects, day_intervals, variable_name, time_interval)
-        
+
             # Plot results with baseline details
             baseline_info = ', '.join([f"{eff}: {base}" for eff, base in baseline_dict.items()])
 
@@ -1673,6 +1708,7 @@ class ComparisonTabManager:
 
             filename_prefix = f"glmm_{variable_name}_Normalized_{normalize}_DayInt{day_interval_size}_TimeInt{time_interval}"
             self.save_glmm_results_extended(results, filename_prefix, self.glmm_subfolder)
+            #self.save_glmm_data_to_csv(combined_df, filename_prefix, self.glmm_subfolder)
 
             # Plot results
             if plot:
@@ -1708,6 +1744,28 @@ class ComparisonTabManager:
         except Exception as e:
             self.log(f"Error during GLMM analysis: {e}")
 
+
+
+    def save_glmm_data_to_csv(self,data, filename_prefix, save_dir):
+        """
+        Save the dataset used for GLMM analysis to a CSV file.
+
+        :param data: The DataFrame containing the GLMM data.
+        :param filename_prefix: A prefix for the CSV filename.
+        :param save_dir: The directory where the CSV file will be saved.
+        """
+        try:
+            # Ensure the save directory exists
+            os.makedirs(save_dir, exist_ok=True)
+
+            # Construct the filename and save the CSV
+            csv_filename = f"{filename_prefix}_glmm_data.csv"
+            csv_filepath = os.path.join(save_dir, csv_filename)
+            data.to_csv(csv_filepath, index=True)
+
+            print(f"GLMM data saved successfully to {csv_filepath}")
+        except Exception as e:
+            print(f"Error saving GLMM data to CSV: {e}")
 
     def save_analysis_caption(self, caption, filename_prefix, save_dir):
         """Save the scientific caption to a text file."""
@@ -1809,6 +1867,9 @@ class ComparisonTabManager:
         return var in self.variable_name_mapping and self.variable_name_mapping[var] != 'flight_duration' and self.variable_name_mapping[var] != 'average_speed'
 
     def execute_glmm(self, data, fixed_effects, random_effects, day_intervals, variable_name, minute_interval):
+
+        self.glmm_data_ = os.path.join(self.common_save_dir, 'glmm_data')
+        os.makedirs(self.glmm_data_, exist_ok=True)
         results = []
         dropna_columns = [variable_name] + fixed_effects
         data = data.dropna(subset=dropna_columns)
@@ -1821,30 +1882,36 @@ class ComparisonTabManager:
         for idx, (start_day, end_day) in enumerate(day_intervals):
             start_day_ts = pd.Timestamp(start_day)
             end_day_ts = pd.Timestamp(end_day) + pd.Timedelta(hours=23, minutes=59)
-
             day_segment = data[(data.index >= start_day_ts) & (data.index <= end_day_ts)]
 
             for start_minute, end_minute in time_intervals:
                 interval_segment = self.segment_data_by_interval(day_segment, start_minute, end_minute)
-                
+
                 if not interval_segment.empty:
                     numeric_cols = interval_segment.select_dtypes(include='number').columns
                     means = interval_segment.groupby(['Day', 'Experiment'])[numeric_cols].mean().reset_index()
-
                     means['Category'] = interval_segment.groupby(['Day', 'Experiment'])['Category'].first().values
                     means['Group'] = interval_segment.groupby(['Day', 'Experiment'])['Group'].first().values
+
+                    # Name the CSV file with parameters for easy identification
+                    filename_prefix = (
+                        f"{variable_name}_"
+                        f"{start_day}_{end_day}_"
+                        f"{start_minute}-{end_minute}_Mins_"
+                        f"Interval_{idx}_"
+                    )
+
+                    self.save_glmm_data_to_csv(means, filename_prefix, self.glmm_data_)
 
                     formula = f"{variable_name} ~ {' + '.join(fixed_effects)}"
 
                     try:
                         model = MixedLM.from_formula(formula, groups=means[random_effects[0]], data=means)
                         fit_result = model.fit(method='lbfgs', maxiter=500, full_output=True)
-                        #print_fit_details(fit_result)
+                        self.print_fit_details(fit_result)
                         self.log(f"Successfully fitted GLMM for {start_minute}:00 on interval {idx}.")
 
-                        # Dynamic extraction of coefficients for each fixed effect
                         for effect in fixed_effects:
-                            # Handle factor levels to extract relevant terms dynamically
                             levels = means[effect].cat.categories
                             for level in levels[1:]:  # Skip the reference level
                                 key = f"{effect}[T.{level}]"
@@ -1859,8 +1926,8 @@ class ComparisonTabManager:
                                     results.append({
                                         'minute': start_minute,
                                         'day_interval': f"{idx}",
-                                        'start_day':start_day_ts,
-                                        'end_day':end_day_ts,
+                                        'start_day': start_day_ts,
+                                        'end_day': end_day_ts,
                                         'effect': effect,
                                         'level': level,
                                         'coefficient': coeff,
@@ -2120,14 +2187,23 @@ class ComparisonTabManager:
         self.glmm_subfolder = os.path.join(self.common_save_dir, 'glmm_analysis_results')
         os.makedirs(self.glmm_subfolder, exist_ok=True)
 
+
+
         # Define variables with their normalization settings
+        # variable_configs = [
+        #     ('Abs. Flying', 'numb_mosquitos_flying', False),
+        #     ('Flight rhythm', 'numb_mosquitos_flying', True),
+        #     ('Abs. Sugar feeder', 'numb_mosquitos_sugar', False),
+        #     ('Flight Speed', 'average_speed', False)
+        # ]
+
         variable_configs = [
-            ('numb_mosquitos_flying', False),
-            ('numb_mosquitos_flying', True),
-            ('numb_mosquitos_sugar', False),
-            ('numb_mosquitos_sugar', True),
-            ('flight_duration', False),
-            ('average_speed', False)
+            ('Abs. Flying', 'numb_mosquitos_flying', False),
+            ('Flight rhythm', 'numb_mosquitos_flying', True),
+            ('Abs. Sugar feeder', 'numb_mosquitos_sugar', False),
+            ('Norm. Sugar feeding', 'sugar_feeding_index', False),
+            ('Flight Duration', 'flight_duration', False),
+            ('Flight Speed', 'average_speed', False)
         ]
 
         # Get settings from the UI
@@ -2138,7 +2214,7 @@ class ComparisonTabManager:
         time_interval = int(self.time_interval_size_combobox.get())
         day_interval_size = self.day_interval_size_combobox.get()
 
-        for variable, normalize in variable_configs:
+        for display_label, variable, normalize in variable_configs:
             self.variable_combobox.set(variable)
             self.normalize_dim_reduction_var_glmm.set(normalize)
             try:
@@ -2149,25 +2225,19 @@ class ComparisonTabManager:
         self.summarize_glmm_results( time_interval, day_interval_size,variable_configs)
 
 
-
-
-    def summarize_glmm_results(self,  time_interval: int, day_interval_size: str, variable_configs: List[Tuple[str, bool]], threshold: float = 0.05) -> None:
-        """Summarizes GLMM results by generating heatmaps for the given variables with matching settings."""
+    def summarize_glmm_results(self,  time_interval: int, day_interval_size: str, variable_configs: List[Tuple[str, str, bool]], threshold: float = 0.05) -> None:
         scale_plot = 0.8
 
         data_dict = {}
 
-        for variable, normalize in variable_configs:
+        for display_label, variable, normalize in variable_configs:
             normalization_tag = "Normalized_True" if normalize else "Normalized_False"
             pattern = os.path.join(self.glmm_subfolder, f'glmm_{variable}_{normalization_tag}_DayInt{day_interval_size}_TimeInt{time_interval}*.csv')
             csv_files = glob.glob(pattern)
-            #print(csv_files)
 
             for file in csv_files:
                 df = pd.read_csv(file)
-                #print(df)
                 filtered_df = df[df['P-Value'] < threshold]
-                #print(filtered_df)
                 
                 if not filtered_df.empty:
                     filtered_df['Hour'] = filtered_df['Minute'] // 60
@@ -2175,14 +2245,10 @@ class ComparisonTabManager:
                 else:
                     df_hourly = pd.Series([np.nan] * 24, index=range(24))
                     
-                data_dict[f"{variable}_{normalization_tag}"] = df_hourly
+                data_dict[f"{display_label}"] = df_hourly
 
-
-       #print(data_dict)
-        #ordered_data = {var: data_dict[var] for var, _ in variable_configs if var in data_dict}
-        #print(ordered_data)
         combined_data = pd.DataFrame(data_dict).transpose().reindex(columns=range(24), fill_value=np.nan)
-        print(combined_data)
+
         num_vars = len(variable_configs)
         fig, axes = plt.subplots(num_vars, 1, figsize=(scale_plot*3, num_vars * 0.3*scale_plot), sharex=True, gridspec_kw={'hspace': 0.2})
 
@@ -2192,7 +2258,7 @@ class ComparisonTabManager:
             sns.heatmap(data.to_frame().transpose(), ax=ax, cmap=cmap_z, cbar=False,
                         vmin=-6, vmax=6, linewidths=0.5, linecolor='grey', xticklabels=False)
 
-            ax.set_ylabel(label.replace('_', ' ').title(), rotation=0, labelpad=5, ha='right')
+            ax.set_ylabel(label, rotation=0, labelpad=5, ha='right',va ='center')  # Use display_label for y-axis
             ax.set_xlabel('')
             ax.set_yticks([])
             ax.set_xticks([])
@@ -2207,7 +2273,7 @@ class ComparisonTabManager:
                             
         cbar.set_label('Z-Score')
 
-        fig.suptitle('Z-Score Heatmaps (P-Value < 0.01)', y=0.98)
+        fig.suptitle('Z-Score Heatmaps (P-Value < 0.05)', y=0.98)
 
         heatmap_filename = os.path.join(self.glmm_subfolder, "z_score_heatmaps")
         plt.tight_layout(rect=[0, 0, 0.9, 1])
@@ -2276,33 +2342,37 @@ class ComparisonTabManager:
             self.plot_manager.save_plot(fig, plot_filename)
             plt.close(fig)
 
-    def save_glmm_results_extended(self,results, filename_prefix, save_dir):
+    def save_glmm_results_extended(self, results, filename_prefix, save_dir):
         """Save extended GLMM results including additional statistical information."""
-
         try:
-            # Save each result in the results array as a separate dictionary entry
+            if not results:
+                self.log("No results to save. Exiting save_glmm_results_extended function.")
+                return
+
             all_plot_data = [{
-                'Minute': result['minute'],
-                'Day Interval': result['day_interval'],
-                'Start Day': result['start_day'],
-                'End Day': result['end_day'],
-                'Effect': result['effect'],
-                'Level': result['level'],
-                'Coefficient': result['coefficient'],
-                'Std. Error': result['coefficient'] / result['z_score'] if result['z_score'] != 0 else np.nan,
-                'Z-Score': result['z_score'],
-                'P-Value': result['p_value'],
-                'Conf. Int. Lower': result['conf_int_lower'],
-                'Conf. Int. Upper': result['conf_int_upper'],
-                'Random Effects Variance': result['re_var'],
-                'AIC': result['AIC'],
-                'BIC': result['BIC']
+                'Minute': result.get('minute', np.nan),
+                'Day Interval': result.get('day_interval', np.nan),
+                'Start Day': result.get('start_day', np.nan),
+                'End Day': result.get('end_day', np.nan),
+                'Effect': result.get('effect', 'Unknown'),
+                'Level': result.get('level', 'Unknown'),
+                'Coefficient': result.get('coefficient', np.nan),
+                'Std. Error': (result.get('coefficient', np.nan) / result.get('z_score', 1)) if result.get('z_score', 1) != 0 else np.nan,
+                'Z-Score': result.get('z_score', np.nan),
+                'P-Value': result.get('p_value', np.nan),
+                'Conf. Int. Lower': result.get('conf_int_lower', np.nan),
+                'Conf. Int. Upper': result.get('conf_int_upper', np.nan),
+                'Random Effects Variance': result.get('re_var', np.nan),
+                'AIC': result.get('AIC', np.nan),
+                'BIC': result.get('BIC', np.nan)
             } for result in results]
 
-            # Convert all_plot_data to DataFrame
             df = pd.DataFrame(all_plot_data)
 
-            # Save DataFrame to CSV
+            if df.empty:
+                self.log("Generated DataFrame is empty. No file will be created.")
+                return
+
             csv_filename = f"{filename_prefix}_extended_results.csv"
             csv_filepath = os.path.join(save_dir, csv_filename)
             df.to_csv(csv_filepath, index=False)
@@ -2313,7 +2383,7 @@ class ComparisonTabManager:
             self.log(f"Failed to save extended GLMM results: {e}")
 
 
-    def print_fit_details(fit_result):
+    def print_fit_details(self,fit_result):
         """Print detailed information from a GLMM fit result."""
         try:
             # Print the model summary

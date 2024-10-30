@@ -12,8 +12,11 @@ import umap
 import warnings
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 import os
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
+from datetime import datetime
+from plot_manager import PlotManager
 
+
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 class StatisticalAnalysisManager:
     def __init__(self, log):
@@ -125,13 +128,14 @@ class StatisticalAnalysisManager:
         return results
     
 
-    def run_dimensionality_reduction(self, data, method='pca', n_components=3):
+    def run_dimensionality_reduction(self, data,plot_manager, method='pca', n_components=3):
         explained_variance = None
 
         if method == 'pca':
             model = PCA(n_components=n_components)
             reduced_data = model.fit_transform(data)
             explained_variance = model.explained_variance_ratio_
+            self.retrieve_principal_contributors(model,plot_manager, data.columns)
         elif method == 't-sne':
             model = TSNE(n_components=n_components, metric='euclidean')
             reduced_data = model.fit_transform(data)
@@ -186,3 +190,62 @@ class StatisticalAnalysisManager:
         
         except Exception as e:
             self.log(f"Exception during GLMM results saving: {e}")
+
+
+
+    def retrieve_principal_contributors(self, pca_model,plot_manager, feature_names):
+        loadings = pca_model.components_
+
+        # Setup for subplots - 3 rows (one for each PC) and 1 column
+        fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(5, 10), sharex=True, constrained_layout=True)
+
+        # Define colors for different measurement types
+
+        for i, (ax, pc_label) in enumerate(zip(axes, ["PC1", "PC2", "PC3"])):
+            self.plot_principal_contributors(ax, loadings[i], feature_names, pc_label)
+        plt.tight_layout()
+        plot_manager.save_plot(fig, "PCA_reverse_inference_time_contribution")
+
+        plt.show()
+        plt.close(fig)
+
+    def plot_principal_contributors(self, ax, pc_loadings, feature_names, pc_label):
+        # Create a DataFrame for easy manipulation
+        data = pd.DataFrame({
+            'feature': feature_names,
+            'loading': pc_loadings
+        })
+
+        # Extract time intervals and calculate median time for datetime formatting
+        data['time'] = data['feature'].apply(lambda x: x.split('_')[0])
+        data['median_time'] = data['time'].apply(self.extract_median_time)
+
+        # Identify the main contributor using absolute values but retain the sign for plotting
+        data['abs_loading'] = data['loading'].abs()
+        max_contributors = data.loc[data.groupby('median_time')['abs_loading'].idxmax()]
+
+        # Plot line with the actual contribution values, maintaining their sign
+        ax.plot(max_contributors['median_time'], max_contributors['loading'], marker='None', linestyle='-')
+
+            # Add a horizontal line at y=0
+        ax.axhline(y=0, color='grey', linestyle='--')
+            # Set y-axis limits to be symmetrical
+        max_abs_value = max(abs(max_contributors['loading'].min()), max_contributors['loading'].max())
+        ax.set_ylim(-max_abs_value, max_abs_value)
+
+        ax.set_title(f'Max Contribution to {pc_label} by Time of Day')
+        ax.set_ylabel('Contribution')  # Update label to indicate signed contribution
+
+        # Adjust x-ticks for improved readability (show every 3 hours)
+        tick_indices = max_contributors['median_time'][::9]  # Modify index to your actual data's frequency if needed
+        ax.set_xticks(tick_indices)
+        ax.set_xticklabels(tick_indices, rotation=45, ha='right')
+        ax.set_xlabel('Time of Day')
+
+    @staticmethod
+    def extract_median_time(interval_str):
+        start_str, end_str = interval_str.split('-')
+        start_time = datetime.strptime(start_str, '%H:%M:%S')
+        end_time = datetime.strptime(end_str, '%H:%M:%S')
+        median_time = start_time + (end_time - start_time) / 2
+        return median_time.strftime('%H:%M')
