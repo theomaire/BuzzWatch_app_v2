@@ -5,7 +5,7 @@ from threading import Thread
 
 
 class AnalysisTabManager:
-    def __init__(self, root, ui_manager, state_manager):
+    def __init__(self, root, ui_manager, state_manager,plot_manager):
         self.root = root
         self.ui_manager = ui_manager
         self.state_manager = state_manager
@@ -13,6 +13,9 @@ class AnalysisTabManager:
         self.log = ui_manager.log
         self.video_manager = ui_manager.video_manager
         self.video_scrollbar = None
+        self.plot_manager = plot_manager
+
+
 
     def init_analysis_tab(self, tab):
         self.tab = tab
@@ -148,6 +151,9 @@ class AnalysisTabManager:
         buttons_frame = tk.Frame(tab)
         buttons_frame.grid(row=0, column=0, rowspan=2, sticky="ns", padx=5, pady=5)
 
+        update_video_list_video_button = tk.Button(buttons_frame, text="Update video to analyze list", command=self.update_video_listbox_svtracking)
+        update_video_list_video_button.pack(anchor=tk.W, pady=2)
+
         analyze_video_button = tk.Button(buttons_frame, text="Analyze Video", command=self.analyze_selected_video)
         analyze_video_button.pack(anchor=tk.W, pady=2)
 
@@ -166,8 +172,8 @@ class AnalysisTabManager:
         inspect_traj_button = tk.Button(buttons_frame, text="Show flight traj", command=self.inspect_trajectories)
         inspect_traj_button.pack(anchor=tk.W, pady=2)
 
-        extract_metrics_button = tk.Button(buttons_frame, text="Extract Flight Metrics", command=self.show_flight_metrics)
-        extract_metrics_button.pack(anchor=tk.W, pady=2)
+        # extract_metrics_button = tk.Button(buttons_frame, text="Extract Flight Metrics", command=self.show_flight_metrics)
+        # extract_metrics_button.pack(anchor=tk.W, pady=2)
 
         # Middle column for list boxes
         listbox_frame = tk.Frame(tab)
@@ -391,13 +397,21 @@ class AnalysisTabManager:
             start_time = self.video_manager.get_datetime_from_file_name(video_name)
             self.set_video_start_time(start_time)
 
+
+    def create_folder_plot(self):
+        #Set-up folder for plots
+        plot_folder = os.path.join(self.experiment_manager.experiment.folder_analysis, "plots")
+        self.plot_manager.save_dir = plot_folder
+        os.makedirs(self.plot_manager.save_dir, exist_ok=True)
+
     def inspect_time_series(self):
-        # Create a new top-level window
-        fig, axs = plt.subplots(2, 1, figsize=(12, 8))
+
+        self.create_folder_plot()
+        coeff = 0.8
+        fig, axs = self.plot_manager.initialize_figure(subplots_shape=(2, 1), figsize=(12*coeff, 8*coeff))
+
         fig.subplots_adjust(hspace=0.5, wspace=0.5)  # Adjust the space between plots
 
-        # Flatten the 2D array of axes for easier access
-        axs = axs.flatten()
 
         # Population Variables Plots
         data = self.video_manager.mosquito_tracks.population_variables  # Retrieve the population data
@@ -411,13 +425,14 @@ class AnalysisTabManager:
         axs[0].set_xlabel("minutes")
         axs[0].set_ylabel("Count")
 
-        axs[1].plot(minutes,data['numb_mosquitos_sugar'], color='green')
-        axs[1].plot(minutes,data['numb_mosquitos_hs'], color='orange')
-        axs[1].plot(minutes,data['numb_mosquitos_left_ctrl'], color='black')
-        axs[1].plot(minutes,data['numb_mosquitos_right_ctrl'], color='grey')
+        axs[1].plot(minutes,data['numb_mosquitos_sugar'], color='green',label="sugar feeder")
+        axs[1].plot(minutes,data['numb_mosquitos_hs'], color='orange',label="opposite ctrl")
+        axs[1].plot(minutes,data['numb_mosquitos_left_ctrl'], color='purple',label="left ctrl")
+        axs[1].plot(minutes,data['numb_mosquitos_right_ctrl'], color='pink',label="right ctrl")
         axs[1].set_title("Number of Mosquitos at on side windows")
         axs[1].set_xlabel("Time")
         axs[1].set_ylabel("Count")
+        plt.legend()
 
 
         # # Individual Statistics Histograms
@@ -433,114 +448,114 @@ class AnalysisTabManager:
         # axs[5].set_xlabel("Speed")
         # axs[5].set_ylabel("Frequency")
 
-        plt.tight_layout()
-    
+        self.plot_manager.save_plot(fig,"single_video_time_series")
         # Now, since we aren't using a canvas, we can show the figure in a separate window
         plt.show()
 
 
 
     def inspect_histogram(self):
-                # Create a new top-level window
-        fig, axs = plt.subplots(3, 1, figsize=(5, 8))
-        fig.subplots_adjust(hspace=0.5, wspace=0.5)  # Adjust the space between plots
+        self.create_folder_plot()
 
-        # Flatten the 2D array of axes for easier access
-        axs = axs.flatten()
+        fig, axs = self.plot_manager.initialize_figure(subplots_shape=(1, 3), figsize=(5, 2))
+
+        #fig.subplots_adjust(hspace=0.5, wspace=0.5)  # Adjust the space between plots
+
 
         # Population Variables Plots
         data = self.video_manager.mosquito_tracks.individual_variables  # Retrieve the population data
 
 
-        axs[0].hist(data["average_speed"], bins=20, color='purple', edgecolor='black')
-        axs[0].set_title("Histogram of Flight Duration")
-        axs[0].set_xlabel("Duration")
+        axs[0].hist(data["average_speed"], bins=20, color='grey', edgecolor='black')
+        axs[0].set_title("Histogram")
+        axs[0].set_xlabel("Average speed")
         axs[0].set_ylabel("Frequency")
 
-        axs[1].hist(data["flight_duration"], bins=20, color='purple', edgecolor='black')
-        axs[1].set_title("Histogram of Flight Duration")
-        axs[1].set_xlabel("Duration")
+        axs[1].hist(data["flight_duration"], bins=20, color='grey', edgecolor='black')
+        axs[1].set_title("Histogram")
+        axs[1].set_xlabel("Flight Duration")
         axs[1].set_ylabel("Frequency")
 
         data = self.video_manager.mosquito_tracks.resting_variables  # Retrieve the population data
-        axs[2].hist(data["resting_duration"], bins=20, color='purple', edgecolor='black')
-        axs[2].set_title("Histogram of Flight Duration")
-        axs[2].set_xlabel("Duration")
+        axs[2].hist(data["resting_duration"], bins=20, color='grey', edgecolor='black')
+        axs[2].set_title("Histogram ")
+        axs[2].set_xlabel("resting duration")
         axs[2].set_ylabel("Frequency")
         plt.tight_layout()
     
         # Now, since we aren't using a canvas, we can show the figure in a separate window
+        self.plot_manager.save_plot(fig,"histograms")
+
         plt.show()
 
 
     def inspect_trajectories(self):
 
-        fig, axes = plt.subplots(3, 6,dpi=200)
+        self.create_folder_plot()
+        fig, axes = self.plot_manager.initialize_figure(subplots_shape=(3, 6), figsize=(10, 10), tight_layout=False)
+
         fig.subplots_adjust(hspace=0., wspace=0.)
-        fig.set_figheight(20)
-        fig.set_figwidth(20)
-        axes  = axes.reshape(-1)
 
         # Population Variables Plots
         mosquito_tracks = self.video_manager.mosquito_tracks  # Retrieve the population data
-
         axes = self.experiment_manager.experiment.plot_sample_flight_trajectories_from_video(axes,mosquito_tracks)
+        self.plot_manager.save_plot(fig,"flight_traj")
         plt.show()
 
 
-    def show_flight_metrics(self):
-        # Get selected tracking video
-        selected_video = self.pkl_listbox.curselection()
-        if not selected_video:
-            self.log("No tracking video selected.")
-            return
+    # def show_flight_metrics(self):
+    #     # Get selected tracking video
+    #     selected_video = self.pkl_listbox.curselection()
+    #     if not selected_video:
+    #         self.log("No tracking video selected.")
+    #         return
         
-        tracking_file = self.pkl_listbox.get(selected_video[0])
-        try:
-            # Fetch the video name and load the corresponding tracking data
-            video_name = self.get_video_name_from_tracking_file(tracking_file)
-            # Initialize a single_video_analysis object
-            video_analysis = single_video_analysis(self.experiment_manager.experiment, video_name, debug_mode=False)
-            video_analysis.mosquito_tracks = self.video_manager.mosquito_tracks
+    #     tracking_file = self.pkl_listbox.get(selected_video[0])
+    #     try:
+    #         # Fetch the video name and load the corresponding tracking data
+    #         video_name = self.get_video_name_from_tracking_file(tracking_file)
+    #         # Initialize a single_video_analysis object
+    #         video_analysis = single_video_analysis(self.experiment_manager.experiment, video_name, debug_mode=False)
+    #         video_analysis.mosquito_tracks = self.video_manager.mosquito_tracks
             
-            # Perform the analysis to extract flight metrics around resting points
-            video_analysis.extract_flight_metrics_around_resting()
-            flight_metrics_df = video_analysis.mosquito_tracks.flight_metrics_around_resting
+    #         # Perform the analysis to extract flight metrics around resting points
+    #         video_analysis.extract_flight_metrics_around_resting()
+    #         flight_metrics_df = video_analysis.mosquito_tracks.flight_metrics_around_resting
             
-            if flight_metrics_df.empty:
-                self.log("No flight metrics found.")
-                return
+    #         if flight_metrics_df.empty:
+    #             self.log("No flight metrics found.")
+    #             return
 
-            # Prepare the data for plotting
-            flight_metrics_df['landing_duration'] = flight_metrics_df['landing'].apply(lambda x: x[0])
-            flight_metrics_df['landing_speed'] = flight_metrics_df['landing'].apply(lambda x: x[1])
-            flight_metrics_df['takeoff_duration'] = flight_metrics_df['takeoff'].apply(lambda x: x[0])
-            flight_metrics_df['takeoff_speed'] = flight_metrics_df['takeoff'].apply(lambda x: x[1])
+    #         # Prepare the data for plotting
+    #         flight_metrics_df['landing_duration'] = flight_metrics_df['landing'].apply(lambda x: x[0])
+    #         flight_metrics_df['landing_speed'] = flight_metrics_df['landing'].apply(lambda x: x[1])
+    #         flight_metrics_df['takeoff_duration'] = flight_metrics_df['takeoff'].apply(lambda x: x[0])
+    #         flight_metrics_df['takeoff_speed'] = flight_metrics_df['takeoff'].apply(lambda x: x[1])
 
-             # Define colors for each zone
-            zone_colors = {
-                'sugar': 'blue',
-                'hs': 'green',
-                'left_ctrl': 'red',
-                'right_ctrl': 'orange'
-            }
+    #          # Define colors for each zone
+    #         zone_colors = {
+    #             'sugar': 'blue',
+    #             'hs': 'green',
+    #             'left_ctrl': 'red',
+    #             'right_ctrl': 'orange'
+    #         }
 
-            fig, ax = plt.subplots(figsize=(10, 6))
+    #         fig, ax = plt.subplots(figsize=(10, 6))
 
-            # Plot take-off duration as a function of resting time
-            for zone, color in zone_colors.items():
-                zone_data = flight_metrics_df[flight_metrics_df['zone'] == zone]
-                ax.scatter(zone_data['resting_time'], zone_data['takeoff_duration'], color=color, label=zone)
+    #         # Plot take-off duration as a function of resting time
+    #         for zone, color in zone_colors.items():
+    #             zone_data = flight_metrics_df[flight_metrics_df['zone'] == zone]
+    #             ax.scatter(zone_data['resting_time'], zone_data['takeoff_duration'], color=color, label=zone)
 
-            ax.set_title("Takeoff Duration as a function of Resting Time")
-            ax.set_xlabel("Resting Time (s)")
-            ax.set_ylabel("Takeoff Duration (s)")
-            ax.legend(title="Zone")
+    #         ax.set_title("Takeoff Duration as a function of Resting Time")
+    #         ax.set_xlabel("Resting Time (s)")
+    #         ax.set_ylabel("Takeoff Duration (s)")
+    #         ax.legend(title="Zone")
 
-            plt.show()
+    #         plt.show()
 
-        except Exception as e:
-            self.log(f"Error loading tracking data from {tracking_file}: {e}")
+    #     except Exception as e:
+    #         self.log(f"Error loading tracking data from {tracking_file}: {e}")
 
 
     def on_scroll(self, value):

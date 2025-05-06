@@ -1,6 +1,53 @@
 import tkinter as tk
 from tkinter import ttk
 import os
+from common_imports import *
+from multiprocessing import Pool, cpu_count
+import pandas as pd
+from tqdm import tqdm
+
+# Define the function at module level
+def process_video_files(video_file, folder_analysis):
+    """
+    Process a single video file to extract necessary data.
+    
+    Args:
+        video_file (str): The name of the video file to process.
+        folder_analysis (str): The directory where analysis data is stored.
+
+    Returns:
+        tuple or None: Returns the processed data as a tuple or None if an error occurs.
+    """
+    final_data_path = os.path.join(folder_analysis, "final_tracking_data", f"forward_mosq_tracks_{video_file}")
+    if not os.path.exists(final_data_path):
+        print(f"File not found: {final_data_path}")
+        return None
+
+    try:
+        with open(final_data_path, 'rb') as f:
+            video_data = pickle.load(f)
+    except (OSError, pickle.PickleError) as e:
+        # Log the error and return None on exception to prevent crashing
+        print(f"Error loading {final_data_path}: {e}")
+        return None
+
+    try:
+        population_data = video_data.population_variables.resample('1s', label='right').mean()
+        individual_data = video_data.individual_variables
+        flight_metrics_data = video_data.flight_metrics_around_resting if hasattr(video_data, 'flight_metrics_around_resting') else pd.DataFrame()
+        resting_data = video_data.resting_variables
+
+        start_time = video_data.time_stamp[0]
+        avg_fraction_flying = video_data.population_variables['numb_mosquitos_flying'].mean()
+        total_nb_tracks = len(video_data.objects.keys())
+
+        return (population_data, individual_data, resting_data, flight_metrics_data,
+                [start_time, avg_fraction_flying, total_nb_tracks])
+    except Exception as e:
+        # Log the error and return None on processing error
+        print(f"Error processing data from {final_data_path}: {e}")
+        return None
+
 
 class BatchProcessingTabManager:
     def __init__(self, root, ui_manager, state_manager):
@@ -27,6 +74,7 @@ class BatchProcessingTabManager:
         self._create_button(controls_frame, "Concatenate and Save Data", self.concatenate_and_save_plots)
         self._create_button(controls_frame, "Load Data", self.load_data)
         self._create_button(controls_frame, "Plot Rolling Average", self.plot_rolling_average)
+        self._create_button(controls_frame, "Plot summary data", self.plot_summary_data)
         self._create_button(controls_frame, "Plot Histograms", self.plot_histograms)
         self._create_button(controls_frame, "Plot Scatter and Bar", self.plot_scatter_and_bar)
         self.script_status_label = tk.Label(controls_frame, text='', fg='blue')
@@ -113,57 +161,62 @@ class BatchProcessingTabManager:
         self.script_status_label.config(text=f"Script generated at: {script_path}")
 
 
-
     def concatenate_and_save_plots(self):
+        """
+        Concatenate and save plots data using multiprocessing for efficiency.
+        """
         folder_analysis = self.experiment_manager.folder_analysis
-        video_files = [f.replace(".png", "") for f in os.listdir(folder_analysis + "/images_mortality") if f.endswith(".png") and f.startswith("Cage")]
+        video_files = [f.replace(".png", "") for f in os.listdir(os.path.join(folder_analysis, "images_mortality")) if f.endswith(".png") and f.startswith("Cage")]
 
-        all_population_data = []
-        all_individual_data = []
-        all_flight_metrics_data = []  # New list to store flight metrics around resting
-        summary_data = []
+        
+        if not video_files:
+            self.log("No data found for concatenation.")
+            return
 
-        for video_name in video_files:
-            final_data_path = os.path.join(folder_analysis, "final_tracking_data", f"forward_mosq_tracks_{video_name}")
-            if os.path.exists(final_data_path):
-                with open(final_data_path, 'rb') as f:
-                    video_data = pickle.load(f)
+        video_files.sort()  # Sort the video files for consistent processing order
+        #video_files = video_files[0:100]
+        # Use a Pool to utilize all available CPU cores
+        with Pool(processes=8) as pool:
+            results = pool.starmap(process_video_files, [(video_name, folder_analysis) for video_name in video_files])
 
-                all_population_data.append(video_data.population_variables.resample('1T', label='right').mean())
-                all_individual_data.append(video_data.individual_variables)
-                
-                # Check and append the new flight metrics data
-                if hasattr(video_data, 'flight_metrics_around_resting'):
-                    all_flight_metrics_data.append(video_data.flight_metrics_around_resting)
+        # Filter out results that are None (for files that couldn't be processed)
+        results = [result for result in results if result is not None]
 
-                start_time = video_data.time_stamp[0]  # Get the start time of the video
-                avg_fraction_flying = video_data.population_variables['numb_mosquitos_flying'].mean()  # Get the average fraction flying per video
-                total_nb_tracks = len(video_data.objects.keys())
+        if not results:
+            self.log("No data found for concatenation.")
+            return
 
-                summary_data.append([start_time, avg_fraction_flying, total_nb_tracks])  # Append to summary data list
+        # Separate the results into distinct lists
+        all_population_data, all_individual_data, all_resting_data, all_flight_metrics_data, summary_data = zip(*results)
 
-        if all_population_data:
-            full_population_data = pd.concat(all_population_data)
-            full_individual_data = pd.concat(all_individual_data)
-            full_flight_metrics_data = pd.concat(all_flight_metrics_data) if all_flight_metrics_data else pd.DataFrame()
+        # Concatenate data, ensuring proper handling of lists
+        full_population_data = pd.concat(all_population_data)
+        full_individual_data = pd.concat(all_individual_data)
+        full_resting_data = pd.concat(all_resting_data)
+        try:
+            full_flight_metrics_data = pd.concat(filter(lambda x: not x.empty, all_flight_metrics_data), ignore_index=True)
+        except Exception:
+            full_flight_metrics_data = None
+        summary_df = pd.DataFrame(summary_data, columns=['start_time', 'avg_fraction_flying', 'total_nb_tracks'])
 
-            summary_df = pd.DataFrame(summary_data, columns=['start_time', 'avg_fraction_flying', 'total_nb_tracks'])
-
-            # Save concatenated data into a single .pkl file
-            final_output_path = os.path.join(folder_analysis, "analyzed_data.pkl")
+        # Save concatenated data into a single .pkl file
+        final_output_path = os.path.join(folder_analysis, "analyzed_data.pkl")
+        try:
             with open(final_output_path, 'wb') as f:
                 pickle.dump({
                     'population_data': full_population_data,
                     'individual_data': full_individual_data,
+                    'resting_data': full_resting_data,
                     'summary_data': summary_df,
-                    'flight_metrics_data': full_flight_metrics_data  # Include the new data
+                    'flight_metrics_data': full_flight_metrics_data
                 }, f)
+        except Exception as e:
+            self.log(f"Failed to save data: {e}")
+            return
 
-            # Notify completion
-            self.log("Concatenation complete. Data saved to:")
-            self.log(final_output_path)
-        else:
-            self.log("No data found for concatenation.")
+        # Notify completion
+        self.log("Concatenation complete. Data saved to:")
+        self.log(final_output_path)
 
 
 
@@ -205,6 +258,19 @@ class BatchProcessingTabManager:
 
         plt.tight_layout()
         plt.show()
+
+
+    def plot_summary_data(self):
+        if self.analyzed_data is None:
+            self.log("Data not loaded. Please load the data first.")
+            return
+        
+        df = self.analyzed_data['summary_data']
+        fig, ax = plt.subplots(1, 1, figsize=(3, 3))
+        ax.scatter(df["avg_fraction_flying"],df["total_nb_tracks"]/40)
+
+        plt.show()
+
 
     def plot_histograms(self):
         if self.analyzed_data is None:
@@ -269,3 +335,4 @@ class BatchProcessingTabManager:
             plt.show()
         else:
             self.log("No flight metrics data to plot.")
+

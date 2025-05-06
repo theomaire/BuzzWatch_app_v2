@@ -5,6 +5,10 @@ import matplotlib as mpl
 from scipy.stats import sem
 import matplotlib.dates as mdates
 from PIL import Image
+import matplotlib.lines as mlines
+import matplotlib.patches as patches
+from matplotlib.colors import LinearSegmentedColormap
+
 
 
 
@@ -15,8 +19,8 @@ class PlotManager:
         os.makedirs(self.save_dir, exist_ok=True)
         self.set_default_plot_properties()
         self.errorbar_props = {
-            'markersize': 20,
-            'capsize': 20,
+            'markersize': 10,
+            'capsize': 4,
             'fmt': '.',
             'linestyle': '--',
         }
@@ -46,6 +50,17 @@ class PlotManager:
             'lines.linewidth': 1,
         })
 
+    def initialize_figure(self, subplots_shape=(1, 1), figsize=(8, 6), dpi=100, tight_layout=True):
+        """Initialize a matplotlib figure and axes with consistent styling."""
+        fig, axs = plt.subplots(*subplots_shape, figsize=figsize, dpi=dpi)
+        if tight_layout:
+            plt.tight_layout()
+        return fig, axs.flatten()
+
+
+        
+
+
     def save_plot(self, fig, filename):
         png_path = os.path.join(self.save_dir, f"{filename}.png")
         pdf_path = os.path.join(self.save_dir, f"{filename}.pdf")
@@ -53,9 +68,39 @@ class PlotManager:
         fig.savefig(pdf_path, format='pdf', bbox_inches='tight',dpi=300,transparent=False)
         self.log(f"Plots saved as {png_path} and {pdf_path}")
 
-    def plot_entire_time_series(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None,normalize=False,ax=None,display_names=None):
+
+        # Assuming the Zeitgeber time conversion starts at 08:00 as ZT0
+    def convert_to_zeitgeber_time(self,index):
+        # Shift time to match ZT0 at 08:00, wrapping around correctly
+        #zt_index = index.shift(-8, 'H')
+        zt_values = (index.hour + index.minute / 60) % 24 - 8 - 20/60 # With 20 min correction (first video is 01, not 00)
+        
+        # Map ZT to the desired range [-8, 15] for plotting
+        #zt_values = [(v - 16 if v >= 16 else v) for v in zt_values]
+        return zt_values
+
+    def plot_entire_time_series(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, normalize=False, ax=None, display_names=None):
         start_date = pd.to_datetime(start_date_str)
         end_date = pd.to_datetime(end_date_str)
+        
+        # Calculate number of days and adjust figure properties
+        num_days = (end_date - start_date).days
+        
+        # Scale font size based on number of days
+        font_size = max(6, min(10, 14 - (num_days / 30)))  # Decrease font size as days increase, min 6pt
+        plt.rcParams.update({
+            'font.size': font_size,
+            'axes.labelsize': font_size,
+            'axes.titlesize': font_size + 2,
+            'xtick.labelsize': font_size - 1,
+            'ytick.labelsize': font_size - 1,
+            'legend.fontsize': font_size - 1
+        })
+        
+        # Adjust line width based on number of days
+        line_width = max(0.5, min(1.5, 2 - (num_days / 30)))  # Thinner lines for longer periods
+        plt.rcParams['lines.linewidth'] = line_width
+
 
         line_styles = ['-', '--', '-.', ':']
 
@@ -188,9 +233,15 @@ class PlotManager:
                 style = line_styles[i % len(line_styles)]
                 final_series.plot(ax=ax, label=f"{category_name} - {display_name}", linestyle=style, lw=1,color=color)
 
-        ax.set_title("Comparison of Selected Variables")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Value")
+        ax.set_title("Time series")
+        ax.set_xlabel("Days")
+            # Ensure x-axis label is visible
+        #ax.xaxis.set_label_coords(0.5, -0.1)
+    
+        # Add some padding to prevent label cutoff
+
+        #ax.margins(x=0.2, y=0.2)
+        ax.set_ylabel(f"{display_names[0]}" if len(display_names) == 1 else "Values")
         ax.legend()
         
         # Join experiment, group, and category names
@@ -206,20 +257,232 @@ class PlotManager:
         # plt.close(fig)
 
 
-    def plot_daily_average(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, normalize=False,ax=None,display_names=None):
+        
+        # Ensure proper spacing
+        #fig.subplots_adjust(left=0.12, right=0.95, bottom=0.15, top=0.95)
+        plt.tight_layout()
+    
+    def plot_daily_average(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, 
+                        experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, 
+                        end_hour=None, normalize=False, ax=None, display_names=None, use_zeitgeber_time=False,ylim=None):
+        """
+        Plot the daily average of variables.
+
+        :param use_zeitgeber_time: If True, plots the time axis in Zeitgeber Time (ZT).
+        """
+        try:
+            start_date = pd.to_datetime(start_date_str)
+            end_date = pd.to_datetime(end_date_str)
+
+            line_styles = ['-', '--', '-.', ':']
+
+            exp_legend_added = False
+            group_legend_added = False
+            category_legend_added = False
+
+            exp_names = []
+            group_names = []
+            category_names = []
+
+            # Plot individual experiments
+            for exp_data in experiments_to_plot:
+                alias = exp_data['alias']
+                exp_names.append(alias)
+
+                population_data = exp_data['population_data']
+                individual_data = exp_data['individual_data']
+
+                for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
+                    var_data = self.get_var_data(var, population_data, individual_data, threshold)
+
+                    # Continue if the data is empty
+                    if var_data.empty:
+                        self.log(f"[DEBUG] Skipped {alias} - {var}: No data.")
+                        continue
+
+                    if resample_interval:
+                        var_data = var_data.resample(resample_interval).mean()
+
+                    if moving_avg_window:
+                        var_data = var_data.rolling(window=int(moving_avg_window)).mean()
+
+                    if normalize:
+                        var_data = self.normalize_by_daily_total(var_data)
+
+                    day_avg, day_std = self.calculate_daily_avg(var_data, start_date, end_date, resample_interval, moving_avg_window)
+                    
+                    # Continue if the processed data is empty
+                    if day_avg.empty:
+                        self.log(f"[DEBUG] Skipped {alias} - {var}: No data after processing.")
+                        continue
+
+                    style = line_styles[i % len(line_styles)]
+
+                    x_values = self.convert_to_zeitgeber_time(day_avg.index) if use_zeitgeber_time else day_avg.index
+
+                    ax.plot(x_values, day_avg, label=f"{alias} - {display_name}", linestyle=style)
+
+                    if not exp_legend_added:
+                        ax.fill_between(x_values, day_avg - day_std, day_avg + day_std, alpha=0.3, label="Experiment: Avg ± Std (Days)")
+                        exp_legend_added = True
+                    else:
+                        ax.fill_between(x_values, day_avg - day_std, day_avg + day_std, alpha=0.3)
+
+            # Plot averaged groups
+            for category_name, groups in grouped_experiments.items():
+                for group_name in groups_to_plot:
+                    if group_name in groups:
+                        group_names.append(group_name)
+
+                        group_data = {var: [] for var in selected_vars}
+
+                        color = self.group_colors.get(group_name, 'tab:blue')
+                        marker = self.group_markers.get(group_name, 'o')
+
+                        for exp_data in groups[group_name]:
+                            alias = exp_data['alias']
+                            population_data = exp_data['population_data']
+                            individual_data = exp_data['individual_data']
+
+                            for var in selected_vars:
+                                var_data = self.get_var_data(var, population_data, individual_data, threshold)
+                                if var_data.empty:
+                                    self.log(f"[DEBUG] Skipped group {group_name} - {alias} - {var}: No data.")
+                                    continue
+
+                                if resample_interval:
+                                    var_data = var_data.resample(resample_interval).mean()
+
+                                if moving_avg_window:
+                                    var_data = var_data.rolling(window=int(moving_avg_window)).mean()
+
+                                if normalize:
+                                    var_data = self.normalize_by_daily_total(var_data)
+                                var_data = var_data[~var_data.index.duplicated(keep='first')]
+
+                                day_avg, day_std = self.calculate_daily_avg(var_data, start_date, end_date, resample_interval,
+                                                                            moving_avg_window)
+                                group_data[var].append(day_avg)
+
+                        for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
+                            if not group_data[var]:
+                                continue
+                            daily_avg_df = pd.concat(group_data[var], axis=1)
+
+                            group_daily_avg = daily_avg_df.mean(axis=1)
+                            group_daily_std = daily_avg_df.std(axis=1)
+
+                            style = line_styles[i % len(line_styles)]
+
+                            x_values = self.convert_to_zeitgeber_time(group_daily_avg.index) if use_zeitgeber_time else group_daily_avg.index
+
+                            ax.plot(x_values, group_daily_avg, label=f"{group_name} - {display_name}", linestyle=style, color=color)
+
+                            if not group_legend_added:
+                                ax.fill_between(x_values, group_daily_avg - group_daily_std, group_daily_avg + group_daily_std, alpha=0.3,
+                                                color=color, label="Group: Avg ± Std (Experiments)")
+                                group_legend_added = True
+                            else:
+                                ax.fill_between(x_values, group_daily_avg - group_daily_std, group_daily_avg + group_daily_std, alpha=0.3,
+                                                color=color)
+
+            unified_index = pd.date_range(start=start_date, end=end_date, freq=resample_interval or 'T')
+            for category_name in categories_to_plot:
+                self.log(f"Processing category: {category_name}")
+                category_names.append(category_name)
+                category_data = {var: [] for var in selected_vars}
+
+                color = self.category_colors.get(category_name, 'tab:blue')
+                marker = self.category_markers.get(category_name, 'o')
+
+                for group_name, group in grouped_experiments[category_name].items():
+                    group_data = {var: [] for var in selected_vars}
+
+                    for exp_data in group:
+                        alias = exp_data['alias']
+                        population_data = exp_data['population_data']
+                        individual_data = exp_data['individual_data']
+
+                        for var in selected_vars:
+                            var_data = self.get_var_data(var, population_data, individual_data, threshold)
+                            if not var_data.empty:
+                                if resample_interval:
+                                    var_data = var_data.resample(resample_interval).mean()
+
+                                if moving_avg_window:
+                                    moving_avg_window = int(moving_avg_window)
+                                    var_data = var_data.rolling(window=moving_avg_window).mean()
+
+                                if normalize:
+                                    var_data = self.normalize_by_daily_total(var_data)
+
+                                var_data = var_data[~var_data.index.duplicated(keep='first')]
+
+                                day_avg, _ = self.calculate_daily_avg(var_data, start_date, end_date, resample_interval, moving_avg_window)
+                                group_data[var].append(day_avg)
+
+                    if group_data[var]:
+                        group_avg_df = pd.concat(group_data[var], axis=1)
+                        category_data[var].append(group_avg_df.mean(axis=1))
+
+                for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
+                    if not category_data[var]:
+                        continue
+
+                    category_avg_df = pd.concat(category_data[var], axis=1)
+
+                    category_daily_avg = category_avg_df.mean(axis=1)
+                    category_daily_std = category_avg_df.std(axis=1)
+
+                    style = line_styles[i % len(line_styles)]
+                    
+                    x_values = self.convert_to_zeitgeber_time(category_daily_avg.index) if use_zeitgeber_time else category_daily_avg.index
+
+                    ax.plot(x_values, category_daily_avg, label=f"{category_name} - {display_name}", linestyle=style, color=color)
+
+                    if not category_legend_added:
+                        ax.fill_between(x_values, category_daily_avg - category_daily_std, category_daily_avg + category_daily_std,
+                                        alpha=0.3, color=color, label="Category: Avg ± Std (Groups)")
+                        category_legend_added = True
+                    else:
+                        ax.fill_between(x_values, category_daily_avg - category_daily_std, category_daily_avg + category_daily_std,
+                                        alpha=0.3, color=color)
+
+            # if use_zeitgeber_time:
+            #     # Set limits for x-axis to maintain consistency in display 
+            #     ax.set_xlim(-8, 15)
+            #     self.add_light_intensity_bar(ax)
+            #     # Define ZT values ranging from the specified -8 to 15
+            #     zt_ticks = list(range(-8, 16))
+            #     zt_labels = [f"{(t)}" for t in zt_ticks]  # Correctly wrap-around to [16, ..., 23, 0, ..., 15]
+
+            #     # Set the tick locations and labels
+            #     ax.set_xticks(zt_ticks)
+            #     ax.set_xticklabels(zt_labels)
+
+                
+
+            # Add the light intensity bar at this point
+            print(ylim)
+            if ylim == '':
+                pass
+            else:
+                ax.set_ylim([0,np.float64(ylim)])
+            ax.set_title("Av. daily rhythm")
+            #ax.set_xlabel("Zeitgeber Time" if use_zeitgeber_time else "Hour of the Day")
+            ax.set_ylabel(f"{display_names[0]}" if len(display_names) == 1 else "Values")
+            #plt.xticks(rotation=45)
+            plt.tight_layout()
+            ax.legend(fontsize='small')
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+    def plot_avg_over_days(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, normalize=False, ax=None, display_names=None):
         start_date = pd.to_datetime(start_date_str)
         end_date = pd.to_datetime(end_date_str)
 
-
-       #print(display_names)
-
-        # if ax is None:
-        #     fig, ax = plt.subplots(figsize=(10, 6))
+        # Define line styles
         line_styles = ['-', '--', '-.', ':']
-
-        exp_legend_added = False
-        group_legend_added = False
-        category_legend_added = False
 
         exp_names = []
         group_names = []
@@ -233,34 +496,21 @@ class PlotManager:
             population_data = exp_data['population_data']
             individual_data = exp_data['individual_data']
 
+            color = self.exp_colors.get(alias, 'tab:red')
+
             for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
                 var_data = self.get_var_data(var, population_data, individual_data, threshold)
-                if var_data.empty:
-                    self.log(f"[DEBUG] Skipped {alias} - {var}: No data.")
-                    continue
-
-                if resample_interval:
-                    var_data = var_data.resample(resample_interval).mean()
-
-                if moving_avg_window:
-                    var_data = var_data.rolling(window=int(moving_avg_window)).mean()
 
                 if normalize:
                     var_data = self.normalize_by_daily_total(var_data)
+                var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour}:00', f'{end_hour}:00')
 
-                day_avg, day_std = self.calculate_daily_avg(var_data, start_date, end_date, resample_interval, moving_avg_window)
-                if day_avg.empty:
-                    self.log(f"[DEBUG] Skipped {alias} - {var}: No data after processing.")
-                    continue
+                daily_means = var_data.resample('D').mean()
+                daily_std = var_data.resample('D').std()
+                days_since_start = (daily_means.index - daily_means.index[0]).days + 1
 
                 style = line_styles[i % len(line_styles)]
-                ax.plot(day_avg.index, day_avg, label=f"{alias} - {display_name}", linestyle=style)
-
-                if not exp_legend_added:
-                    ax.fill_between(day_avg.index, day_avg - day_std, day_avg + day_std, alpha=0.3, label="Experiment: Avg ± Std (Days)")
-                    exp_legend_added = True
-                else:
-                    ax.fill_between(day_avg.index, day_avg - day_std, day_avg + day_std, alpha=0.3)
+                ax.errorbar(days_since_start, daily_means, yerr=daily_std, label=f"{alias} - {display_name}", color=color, **self.errorbar_props)
 
         # Plot averaged groups
         for category_name, groups in grouped_experiments.items():
@@ -271,173 +521,6 @@ class PlotManager:
                     group_data = {var: [] for var in selected_vars}
 
                     color = self.group_colors.get(group_name, 'tab:blue')
-                    marker = self.group_markers.get(group_name, 'o')
-
-                    for exp_data in groups[group_name]:
-                        alias = exp_data['alias']
-                        population_data = exp_data['population_data']
-                        individual_data = exp_data['individual_data']
-
-                        for var in selected_vars:
-                            var_data = self.get_var_data(var, population_data, individual_data, threshold)
-                            if var_data.empty:
-                                self.log(f"[DEBUG] Skipped group {group_name} - {alias} - {var}: No data.")
-                                continue
-
-                            if resample_interval:
-                                var_data = var_data.resample(resample_interval).mean()
-
-                            if moving_avg_window:
-                                var_data = var_data.rolling(window=int(moving_avg_window)).mean()
-
-                            if normalize:
-                                var_data = self.normalize_by_daily_total(var_data)
-                            var_data = var_data[~var_data.index.duplicated(keep='first')]
-
-                            day_avg, day_std = self.calculate_daily_avg(var_data, start_date, end_date, resample_interval, moving_avg_window)
-                            group_data[var].append(day_avg)
-
-                    for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
-                        if not group_data[var]:
-                            continue
-                        daily_avg_df = pd.concat(group_data[var], axis=1)
-
-                        group_daily_avg = daily_avg_df.mean(axis=1)
-                        group_daily_std = daily_avg_df.std(axis=1)
-
-                        style = line_styles[i % len(line_styles)]
-                        ax.plot(group_daily_avg.index, group_daily_avg, label=f"{group_name} - {display_name}", linestyle=style, color=color)
-
-                        if not group_legend_added:
-                            ax.fill_between(group_daily_avg.index, group_daily_avg - group_daily_std, group_daily_avg + group_daily_std, alpha=0.3, color=color, label="Group: Avg ± Std (Experiments)")
-                            group_legend_added = True
-                        else:
-                            ax.fill_between(group_daily_avg.index, group_daily_avg - group_daily_std, group_daily_avg + group_daily_std, alpha=0.3, color=color)
-
-
-
-        unified_index = pd.date_range(start=start_date, end=end_date, freq=resample_interval or 'T')
-        for category_name in categories_to_plot:
-            self.log(f"Processing category: {category_name}")
-            category_names.append(category_name)
-            category_data = {var: [] for var in selected_vars}
-
-            color = self.category_colors.get(category_name, 'tab:blue')
-            marker = self.category_markers.get(category_name, 'o')
-
-            for group_name, group in grouped_experiments[category_name].items():
-                group_data = {var: [] for var in selected_vars}
-
-                for exp_data in group:
-                    alias = exp_data['alias']
-                    population_data = exp_data['population_data']
-                    individual_data = exp_data['individual_data']
-
-                    for var in selected_vars:
-                        var_data = self.get_var_data(var, population_data, individual_data, threshold)
-                        if not var_data.empty:
-                            if resample_interval:
-                                var_data = var_data.resample(resample_interval).mean()
-
-                            if moving_avg_window:
-                                moving_avg_window = int(moving_avg_window)
-                                var_data = var_data.rolling(window=moving_avg_window).mean()
-
-                            if normalize:
-                                var_data = self.normalize_by_daily_total(var_data)
-
-                            var_data = var_data[~var_data.index.duplicated(keep='first')]
-
-                            day_avg, _ = self.calculate_daily_avg(var_data, start_date, end_date, resample_interval, moving_avg_window)
-                            group_data[var].append(day_avg)
-
-                if group_data[var]:
-                    group_avg_df = pd.concat(group_data[var], axis=1).mean(axis=1)
-                    category_data[var].append(group_avg_df)
-
-            for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
-                if not category_data[var]:
-                    continue
-
-                category_avg_df = pd.concat(category_data[var], axis=1)
-
-                category_daily_avg = category_avg_df.mean(axis=1)
-                category_daily_std = category_avg_df.std(axis=1)
-
-                style = line_styles[i % len(line_styles)]
-                ax.plot(category_daily_avg.index, category_daily_avg, label=f"{category_name} - {display_name}", linestyle=style, color=color)
-
-                if not category_legend_added:
-                    ax.fill_between(category_daily_avg.index, category_daily_avg - category_daily_std, category_daily_avg + category_daily_std, alpha=0.3, color=color, label="Category: Avg ± Std (Groups)")
-                    category_legend_added = True
-                else:
-                    ax.fill_between(category_daily_avg.index, category_daily_avg - category_daily_std, category_daily_avg + category_daily_std, alpha=0.3, color=color)
-
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-
-        ax.set_title("Daily Average of Selected Variables")
-        ax.set_xlabel("Hour of the Day")
-        ax.set_ylabel("Value")
-        plt.xticks(rotation=45)
-        ax.legend(fontsize='small')
-
-        exp_part = "_and_".join(exp_names) if exp_names else ""
-        group_part = "_and_".join(group_names) if group_names else ""
-        category_part = "_and_".join(category_names) if category_names else ""
-        exp_group_cat_part = "_and_".join(filter(None, [exp_part, group_part, category_part]))
-
-        #filename = f"daily_average_{exp_group_cat_part}_{start_date_str}_to_{end_date_str}".replace(" ", "_")
-        # if ax is ax is fig.axes[0]:
-        # self.save_plot(fig, filename)
-        # plt.show()
-        # plt.close(fig)
-
-    def plot_avg_over_days(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None,normalize=False,ax=None,display_names=None):
-        start_date = pd.to_datetime(start_date_str)
-        end_date = pd.to_datetime(end_date_str)
-        
-        # if ax is None:
-        #     fig, ax = plt.subplots(figsize=(10, 6))
-        line_styles = ['-', '--', '-.', ':']
-
-        exp_names = []
-        group_names = []
-        category_names = []
-
-        # Plot individual experiments
-        for exp_data in experiments_to_plot:
-            alias = exp_data['alias']
-            exp_names.append(alias)
-            
-            population_data = exp_data['population_data']
-            individual_data = exp_data['individual_data']
-
-            for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
-                var_data = self.get_var_data(var, population_data, individual_data, threshold)
-
-                if normalize:
-                    var_data = self.normalize_by_daily_total(var_data)
-                var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour}:00', f'{end_hour}:00')
-
-                #if resample_interval:
-                #    var_data = var_data.resample(resample_interval).mean()
-
-
-
-                daily_means = var_data.resample('D').mean()
-                daily_std = var_data.resample('D').std()
-                days_since_start = (daily_means.index - daily_means.index[0]).days+1
-
-                style = line_styles[i % len(line_styles)]
-                ax.errorbar(days_since_start, daily_means, yerr=daily_std, label=f"{alias} - {display_name}", **self.errorbar_props)
-
-        # Plot averaged groups
-        for category_name, groups in grouped_experiments.items():
-            for group_name in groups_to_plot:
-                if group_name in groups:
-                    group_names.append(group_name)
-                    
-                    group_data = {var: [] for var in selected_vars}
 
                     for exp_data in groups[group_name]:
                         population_data = exp_data['population_data']
@@ -450,9 +533,6 @@ class PlotManager:
                                 var_data = self.normalize_by_daily_total(var_data)
                             var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour}:00', f'{end_hour}:00')
 
-                            #if resample_interval:
-                            #    var_data = var_data.resample(resample_interval).mean()
-
                             group_data[var].append(var_data.resample('D').mean())
 
                     for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
@@ -462,10 +542,10 @@ class PlotManager:
                         daily_avg_df = pd.concat(group_data[var], axis=1)
                         group_daily_avg = daily_avg_df.mean(axis=1)
                         group_daily_std = daily_avg_df.std(axis=1)
-                        days_since_start = (group_daily_avg.index - group_daily_avg.index[0]).days+1
+                        days_since_start = (group_daily_avg.index - group_daily_avg.index[0]).days + 1
 
                         style = line_styles[i % len(line_styles)]
-                        ax.errorbar(days_since_start, group_daily_avg, yerr=group_daily_std, label=f"{group_name} - {display_name}", **self.errorbar_props)
+                        ax.errorbar(days_since_start, group_daily_avg, yerr=group_daily_std, label=f"{group_name} - {display_name}", color=color, **self.errorbar_props)
 
         # Plot averaged categories
         for category_name in categories_to_plot:
@@ -473,6 +553,8 @@ class PlotManager:
             category_names.append(category_name)
 
             category_data = {var: [] for var in selected_vars}
+
+            color = self.category_colors.get(category_name, 'tab:green')
 
             for group_name, group in grouped_experiments[category_name].items():
                 group_data = {var: [] for var in selected_vars}
@@ -488,9 +570,6 @@ class PlotManager:
                             var_data = self.normalize_by_daily_total(var_data)
                         var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour}:00', f'{end_hour}:00')
 
-                        #if resample_interval:
-                         #   var_data = var_data.resample(resample_interval).mean()
-
                         group_data[var].append(var_data.resample('D').mean())
 
                 if group_data[var]:
@@ -504,22 +583,18 @@ class PlotManager:
                 category_avg_df = pd.concat(category_data[var], axis=1)
                 category_daily_avg = category_avg_df.mean(axis=1)
                 category_daily_std = category_avg_df.std(axis=1)
-                days_since_start = (category_daily_avg.index - category_daily_avg.index[0]).days+1
+                days_since_start = (category_daily_avg.index - category_daily_avg.index[0]).days + 1
 
                 style = line_styles[i % len(line_styles)]
-                ax.errorbar(days_since_start, category_daily_avg, yerr=category_daily_std, label=f"{category_name} - {display_name}", **self.errorbar_props)
+                ax.errorbar(days_since_start, category_daily_avg, yerr=category_daily_std, label=f"{category_name} - {display_name}", color=color, **self.errorbar_props)
 
-        ax.set_title(f"Average of Selected Variables Over Days (from {start_hour}:00 to {end_hour}:00 each day)")
+        ax.set_title(f"Average Over Days (from {start_hour}:00 to {end_hour}:00 each day)")
         ax.set_xlabel("Days Since Start")
-        ax.set_ylabel("Average Value")
+        ax.set_ylabel(f"{display_names[0]}" if len(display_names) == 1 else "Values")
+        ax.set_xlim(left=0)
         ax.set_ylim(bottom=0)
         ax.legend()
-        
-        #filename = f"average_over_days_{exp_group_cat_part}_{start_date_str}_to_{end_date_str}".replace(" ", "_")
-        
-        # self.save_plot(fig, filename)
-        # plt.show()
-        # plt.close(fig)
+        plt.tight_layout()
     
     def calculate_daily_avg(self, df, start_date, end_date, resample_interval, moving_avg_window):
         nb_days = (end_date - start_date).days
@@ -563,109 +638,126 @@ class PlotManager:
         start_date = pd.to_datetime(start_date_str)
         end_date = pd.to_datetime(end_date_str)
 
+        # Create the plot axis if none is provided
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 6))
 
+        # Centralized mapping for plotting styles
+        plot_styles = {
+            'errorbar': {
+                'fmt': 'o',  # Marker style
+                'markersize': 4.5,  # Marker size
+                'capsize': 5,  # Cap size for error bars
+            },
+            'scatter': {
+                's': 20,  # Marker size for scatter (equivalent to markersize^2 for 'o')
+                'alpha': 0.5,  # Transparency level
+                'marker':'o', # Marker style
+                'edgecolors':'none',
+            }
+        }
+
         for i, (var, display_name) in enumerate(zip(selected_vars, display_names)):
-            # Plot individual experiments
-            for exp_data in experiments_to_plot:
-                alias = exp_data['alias']
-                population_data = exp_data['population_data']
-                individual_data = exp_data['individual_data']
+            try:
+                # Plot individual experiments
+                for exp_data in experiments_to_plot:
+                    alias = exp_data['alias']
+                    population_data = exp_data['population_data']
+                    individual_data = exp_data['individual_data']
 
-                var_data = self.get_var_data(var, population_data, individual_data, threshold)
-                var_data = self.crop_time(start_date, end_date, var_data)
+                    # Fetch color for the current experiment
+                    color = self.exp_colors.get(alias, 'tab:blue')
 
-                if normalize:
-                    var_data = self.normalize_by_daily_total(var_data)
-                var_data = var_data.between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
+                    var_data = self.get_var_data(var, population_data, individual_data, threshold)
+                    var_data = self.crop_time(start_date, end_date, var_data)
 
+                    if normalize:
+                        var_data = self.normalize_by_daily_total(var_data)
+                    var_data = var_data.between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
 
+                    daily_means = var_data.resample('D').mean()
+                    avg_all_days = daily_means.mean()
+                    std_all_days = daily_means.std()
 
-                daily_means = var_data.resample('D').mean()
-                avg_all_days = daily_means.mean()
-                std_all_days = daily_means.std()
+                    ax.errorbar(alias, avg_all_days, yerr=std_all_days, label=f"{alias} - {display_name}", color=color, **plot_styles['errorbar'])
+                    ax.scatter([alias] * len(daily_means), daily_means, color=color, **plot_styles['scatter'])
 
-                ax.errorbar(alias, avg_all_days, yerr=std_all_days, fmt='o', markersize=10, capsize=5, label=f"{alias} - {display_name}")
-                ax.scatter([alias] * len(daily_means), daily_means, alpha=0.5)
+                # Plot averaged groups
+                for category_name, groups in sorted(grouped_experiments.items()):
+                    for group_name in sorted(groups_to_plot):
+                        if group_name in groups:
+                            group_data = {var: [] for var in selected_vars}
 
-            # Plot averaged groups
-            for category_name, groups in grouped_experiments.items():
-                for group_name in groups_to_plot:
-                    if group_name in groups:
+                            # Fetch color for the current group
+                            color = self.group_colors.get(group_name, 'tab:green')
+
+                            for exp_data in groups[group_name]:
+                                population_data = exp_data['population_data']
+                                individual_data = exp_data['individual_data']
+
+                                var_data = self.get_var_data(var, population_data, individual_data, threshold)
+
+                                if normalize:
+                                    var_data = self.normalize_by_daily_total(var_data)
+
+                                var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
+
+                                group_data[var].append(var_data.resample('D').mean())
+
+                            if group_data[var]:
+                                daily_avg_df = pd.concat(group_data[var], axis=1)
+                                group_daily_avg = daily_avg_df.mean(axis=1)
+                                group_daily_std = daily_avg_df.std(axis=1)
+
+                                ax.errorbar(group_name, group_daily_avg.mean(), yerr=group_daily_std.mean(), color=color, **plot_styles['errorbar'])
+                                ax.scatter([group_name] * len(group_daily_avg), group_daily_avg, color=color, **plot_styles['scatter'])
+
+                # Plot categories
+                for category_name in sorted(categories_to_plot):
+                    category_data = {var: [] for var in selected_vars}
+
+                    # Fetch color for the current category
+                    color = self.category_colors.get(category_name, 'tab:red')
+
+                    for group_name, group in grouped_experiments[category_name].items():
                         group_data = {var: [] for var in selected_vars}
 
-                        for exp_data in groups[group_name]:
+                        for exp_data in group:
+                            alias = exp_data['alias']
                             population_data = exp_data['population_data']
                             individual_data = exp_data['individual_data']
 
                             var_data = self.get_var_data(var, population_data, individual_data, threshold)
+                            var_data = self.crop_time(start_date, end_date, var_data)
 
                             if normalize:
                                 var_data = self.normalize_by_daily_total(var_data)
-
-                            var_data = self.crop_time(start_date, end_date, var_data).between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
-
-
+                            var_data = var_data.between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
 
                             group_data[var].append(var_data.resample('D').mean())
 
                         if group_data[var]:
-                            daily_avg_df = pd.concat(group_data[var], axis=1)
-                            group_daily_avg = daily_avg_df.mean(axis=1)
-                            group_daily_std = daily_avg_df.std(axis=1)
+                            group_avg_df = pd.concat(group_data[var], axis=1)
+                            category_data[var].append(group_avg_df.mean(axis=1))
 
-                            ax.errorbar(group_name, group_daily_avg.mean(), yerr=group_daily_std.mean(), fmt='o', markersize=10, capsize=5)
-                            ax.scatter([group_name] * len(group_daily_avg), group_daily_avg, alpha=0.5)
+                    if category_data[var]:
+                        category_avg_all_days = pd.concat(category_data[var], axis=1).mean(axis=1)
+                        avg_all_days = category_avg_all_days.mean()
+                        std_all_days = category_avg_all_days.std()
 
+                        ax.errorbar(category_name, avg_all_days, yerr=std_all_days, color=color, **plot_styles['errorbar'])
+                        ax.scatter([category_name] * len(category_avg_all_days), category_avg_all_days, color=color, **plot_styles['scatter'])
 
-
-            # Plot categories
-            for category_name, groups in grouped_experiments.items():
-                if category_name not in categories_to_plot:
-                    continue
-
-                category_data = {var: [] for var in selected_vars}
-
-                for group_name, group in groups.items():
-                    group_data = {var: [] for var in selected_vars}
-
-                    for exp_data in group:
-                        alias = exp_data['alias']
-                        population_data = exp_data['population_data']
-                        individual_data = exp_data['individual_data']
-
-                        var_data = self.get_var_data(var, population_data, individual_data, threshold)
-                        var_data = self.crop_time(start_date, end_date, var_data)
-
-                        if normalize:
-                            var_data = self.normalize_by_daily_total(var_data)
-                        var_data = var_data.between_time(f'{start_hour:02d}:00', f'{end_hour:02d}:00')
-
-
-
-                        group_data[var].append(var_data.resample('D').mean())
-
-                    if group_data[var]:
-                        group_avg_df = pd.concat(group_data[var], axis=1)
-                        category_data[var].append(group_avg_df.mean(axis=1))
-
-                if category_data[var]:
-                    category_avg_all_days = pd.concat(category_data[var], axis=1).mean(axis=1)
-                    avg_all_days = category_avg_all_days.mean()
-                    std_all_days = category_avg_all_days.std()
-
-                    ax.errorbar(category_name, avg_all_days, yerr=std_all_days, fmt='o', markersize=10, capsize=5)
-                    ax.scatter([category_name] * len(category_avg_all_days), category_avg_all_days, alpha=0.5)
+            except Exception as e:
+                self.log(f"An error occurred during plotting: {e}")
+                continue
 
         ax.set_title(f"{display_name} from {start_hour}:00 to {end_hour}:00")
-        ax.set_xlabel("Experiment/Group/Category")
-        ax.set_ylabel(f"{display_name} Value")
         ax.legend()
+        ax.set_xticklabels(ax.get_xticks(), rotation=45, ha='right')
 
-
-
-
+        #ax.set_xlabel("Experiment/Group/Category")
+        ax.set_ylabel(f"{display_name}")
 
 
 
@@ -761,9 +853,9 @@ class PlotManager:
                     alias = exp_data.get('alias')
                     if alias:
                         experiment_to_group_category[alias] = (group_name, category_name)
-
+        coeff = 1.2
         # Define figure and grid layout
-        fig = plt.figure(figsize=(8, 5))  # Adjust to widen the space for square plot area
+        fig = plt.figure(figsize=(coeff*6, coeff*2.5))  # Adjust to widen the space for square plot area
         gs = GridSpec(nrows=1, ncols=2, width_ratios=[5, 1])  # Allocate more space for the plot
 
         ax = fig.add_subplot(gs[0])
@@ -796,8 +888,8 @@ class PlotManager:
                 row[0], row[1],
                 color=color,
                 marker=marker,
-                s=60,
-                alpha=0.8,
+                s=40,
+                alpha=1,
                 label=plot_label,
                 edgecolors='none'
             )
@@ -914,3 +1006,158 @@ class PlotManager:
 
         plt.tight_layout()
         plt.show()
+
+
+    def extract_median_time(self,interval_str):
+        """Calculate median time from a time interval string."""
+        try:
+            start_str, end_str = interval_str.split('-')
+            start_time = datetime.strptime(start_str, '%H:%M:%S')
+            end_time = datetime.strptime(end_str, '%H:%M:%S')
+            median_time = start_time + (end_time - start_time) / 2
+            return median_time.strftime('%H:%M')
+        except Exception as e:
+            raise ValueError(f"Error processing interval '{interval_str}': {e}")
+
+    def validate_and_reshape_contributions(self,contributions, lda_components):
+        """
+        Ensure contributions array is compatible with LDA components.
+        
+        Parameters:
+        - contributions: Array of feature contributions
+        - lda_components: Number of LDA components
+
+        Returns:
+        - 2D reshaped contributions array
+        """
+        contributions = np.atleast_2d(contributions)
+        if contributions.shape[0] != lda_components:
+            raise ValueError(
+                f"Contributions dimension {contributions.shape[0]} does not match expected number of LDA components {lda_components}."
+            )
+        return contributions
+
+    def plot_combined_figure(self, pca_data, target, lda, feature_names, contributions,orthogonal_contributions):
+        """
+        Plot PCA data with LDA separation and contributions.
+
+        Parameters:
+        - pca_data: PCA-transformed data
+        - target: Target variables
+        - lda: Fitted LDA model
+        - feature_names: List of feature names
+        - contributions: Contributions of features to LDA
+        """
+
+        try:
+            coeff = 1.0
+            fig, axes = plt.subplots(1, 2, figsize=(5*coeff, 3*coeff), constrained_layout=True)
+
+            # Plot 1: PCA Data with LDA Separation
+            ax1 = axes[0]
+
+            # To use the custom colors and markers logic defined in 'visualize_reduced_data':
+            for i, (x, y) in enumerate(zip(pca_data[:, 0], pca_data[:, 1])):
+                experiment_name = target[i]
+                if experiment_name == 1:
+                    color = "skyblue"
+                    marker = "s"
+                else:
+                    color = "lightcoral"
+                    marker = "o"
+                # Plot each point with its specific color and marker
+                scatter = ax1.scatter(x, y, color=color, marker=marker, s=20, alpha=0.8, edgecolors='none')
+
+            # Use a legend for the plot if necessary. You can create a color/marker legend based on the colors/markers used
+            handles = [mlines.Line2D([], [], color=color, marker=marker, linestyle='None', markersize=10, label=name)
+                    for name, (color, marker) in zip(self.group_colors.keys(), zip(self.group_colors.values(), self.group_markers.values()))]
+            ax1.legend(handles=handles, title="Experiments", loc='upper right')
+
+            # Calculate limits based on scatter points
+            xlims = ax1.get_xlim()
+            ylims = ax1.get_ylim()
+
+            # LDA line
+            x_vals = np.array(ax1.get_xlim())
+            mean_projection = np.mean(lda.transform(pca_data))
+            lda_scaling_x, lda_scaling_y = lda.scalings_.flatten()
+            y_vals = -x_vals * lda_scaling_x / lda_scaling_y + mean_projection
+            ax1.plot(x_vals, y_vals, color='red', linestyle='--', label='LDA Line')
+
+            # Orthogonal line
+            slope_lda = -lda_scaling_x / lda_scaling_y
+            orthogonal_slope = -1 / slope_lda
+            midpoint = np.mean(pca_data, axis=0)
+            y_ortho_vals = orthogonal_slope * (x_vals - midpoint[0]) + midpoint[1]
+            ax1.plot(x_vals, y_ortho_vals, color='blue', linestyle='--', label='Orthogonal Line')
+
+            ax1.set_title('PCA Data with LDA Separation')
+            ax1.set_xlabel('PCA Component 1')
+            ax1.set_ylabel('PCA Component 2')
+            ax1.set_xlim(xlims)
+            ax1.set_ylim(ylims)
+            legend1 = ax1.legend(*scatter.legend_elements(), title="Classes")
+            ax1.add_artist(legend1)
+            ax1.set_box_aspect(1)  # This makes the data area square
+            ax1.legend()
+
+
+
+            # Plot 2: Contribution Analysis
+            ax2 = axes[1]
+
+            # Prepare data for plotting
+            data = pd.DataFrame({
+                'feature': feature_names,
+                'loading': contributions.flatten(),
+                'orthogonal_loading': orthogonal_contributions.flatten()
+            })
+
+            # Extract median times from intervals
+            try:
+                data['time'] = data['feature'].apply(lambda x: x.split('_')[0])
+                data['median_time'] = data['time'].apply(self.extract_median_time)
+                data['median_time'] = pd.to_datetime(data['median_time'], format='%H:%M')
+            except Exception as e:
+                raise ValueError(f"Error processing time intervals: {e}")
+
+            data['abs_loading'] = data['loading'].abs()
+            max_contributors = data.loc[data.groupby('median_time')['abs_loading'].idxmax()]
+
+            ax2.plot(max_contributors['median_time'], max_contributors['loading'], marker='None', linestyle='-', color='red', label='LDA Contributions')
+
+            # Plot orthogonal contributions (blue line)
+            data['abs_loading_ortho'] = data['orthogonal_loading'].abs()
+            max_ortho_contributors = data.loc[data.groupby('median_time')['abs_loading_ortho'].idxmax()]
+            ax2.plot(max_ortho_contributors['median_time'], max_ortho_contributors['orthogonal_loading'], marker='None', linestyle='--', color='blue', label='Orthogonal Contributions')
+
+            ax2.axhline(y=0, color='grey', linestyle='--')
+            max_abs_value = max(max_contributors['loading'].abs().max(), max_ortho_contributors['orthogonal_loading'].abs().max())
+            ax2.set_ylim(-max_abs_value, max_abs_value)
+            ax2.set_title('Max Contributions by Time Interval')
+            ax2.set_ylabel('Contribution')
+            ax2.set_xlabel('Time of Day')
+            ax2.legend()
+
+            # Set x-ticks every 3 hours
+            start_time = max_contributors['median_time'].min().floor('H')
+            end_time = max_contributors['median_time'].max().ceil('H')
+            xticks = pd.date_range(start=start_time, end=end_time, freq='3H')
+            ax2.set_xticks(xticks)
+            ax2.set_xticklabels(xticks.strftime('%H:%M'), rotation=45, ha='right')
+            ax2.set_box_aspect(1)  # This makes the data area square
+
+
+            plt.tight_layout()
+
+            # Save and display the combined plot
+            self.save_plot(fig, "Combined_PCA_LDA_and_Contributions")
+            plt.show()
+
+        except Exception as e:
+            print(f"Error in plot_combined_figure: {e}")
+
+# Note: Ensure `plot_manager` can handle saving multi-subplot figures.
+
+
+

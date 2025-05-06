@@ -44,10 +44,14 @@ class single_video_analysis:
         self.mosquito_tracks = None
         self.settings_file = experiment_class.settings_file
 
-        cap = cv2.VideoCapture(self.video_path)
-        n_frame = int(cap.get(cv2. CAP_PROP_FRAME_COUNT))
-        cap.release()
-        self.total_number_frames = n_frame
+        try:
+
+            cap = cv2.VideoCapture(self.video_path)
+            n_frame = int(cap.get(cv2. CAP_PROP_FRAME_COUNT))
+            cap.release()
+            self.total_number_frames = n_frame
+        except Exception:
+            self.total_number_frames = 30000
 
         #objs_resting_tracked = resting_tracker(se)
         #self.maxobjdisappear_resting = objs_resting_tracked.maxDisappeared

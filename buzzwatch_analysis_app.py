@@ -11,6 +11,7 @@ from video_manager import VideoManager
 from image_manager import ImageManager
 from state_manager import StateManager
 from config_manager import ConfigManager
+from plot_manager import PlotManager
 
 PATH_TO_APP = os.path.dirname(__file__)
 sys.path.append(PATH_TO_APP)
@@ -54,7 +55,8 @@ class VideoAnalyzerApp:
         self.video_manager = VideoManager(self.log)
         self.image_manager = ImageManager(self.log)
         self.state_manager = StateManager()
-        self.ui_manager = UIManager(self.root, self.experiment_manager, self.video_manager, self.image_manager, self.log, self.state_manager)
+        self.plot_manager = PlotManager(self.log)
+        self.ui_manager = UIManager(self.root, self.experiment_manager, self.video_manager, self.image_manager, self.log, self.state_manager,self.plot_manager)
         
         self.experiment_manager.ui_manager = self.ui_manager
 

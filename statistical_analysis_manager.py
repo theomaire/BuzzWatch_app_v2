@@ -14,6 +14,11 @@ from statsmodels.tools.sm_exceptions import ConvergenceWarning
 import os
 from datetime import datetime
 from plot_manager import PlotManager
+from sklearn.preprocessing import StandardScaler
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+from sklearn.metrics import silhouette_score
+
+
 
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -128,20 +133,61 @@ class StatisticalAnalysisManager:
         return results
     
 
-    def run_dimensionality_reduction(self, data,plot_manager, method='pca', n_components=3):
+    def perform_dimensionality_reduction(self, data,plot_manager,target=None, use_lda=False, method='pca', n_components=2):
         explained_variance = None
 
         if method == 'pca':
+
+            # Normalize data
+            scaler = StandardScaler()
+            normalized_data = scaler.fit_transform(data)
+
+            # Perform PCA
             model = PCA(n_components=n_components)
-            reduced_data = model.fit_transform(data)
+            reduced_data = model.fit_transform(normalized_data)
             explained_variance = model.explained_variance_ratio_
             self.retrieve_principal_contributors(model,plot_manager, data.columns)
+
+
+            # Only perform LDA if enabled
+            if use_lda and target is not None:
+                # Perform LDA on PCA-reduced data
+                lda = LDA(n_components=1)
+                lda_transformed = lda.fit_transform(reduced_data, target)
+
+                # Calculate variance explained by LDA direction
+                lda_variance_proportion = np.var(lda_transformed) / np.var(reduced_data)
+                lda_explained_variance_ratio = lda_variance_proportion / np.sum(explained_variance)
+
+                # Log the explained variance
+                self.log(f"LDA explained variance ratio in PCA space: {lda_explained_variance_ratio:.2%}")
+
+                # Compute Fisher's Criterion
+                fisher_criterion = self.calculate_fishers_criterion(reduced_data, target, lda_transformed)
+                self.log(f"Fisher's Criterion for LDA separation: {fisher_criterion:.2f}")
+
+                lda_contributions_pca = model.components_.T @ lda.scalings_
+
+
+                # Compute orthogonal vector by swapping and negating LDA components
+                lda_vector = lda.scalings_.flatten()
+                orthogonal_vector = np.array([-lda_vector[1], lda_vector[0]])
+                orthogonal_contributions_pca = model.components_.T @ orthogonal_vector.reshape(-1, 1)
+
+
+                self.analyze_cluster_separation(reduced_data, target)
+
+
+                plot_manager.plot_combined_figure( reduced_data, target, lda, data.columns, lda_contributions_pca,orthogonal_contributions_pca)
+
+
         elif method == 't-sne':
             model = TSNE(n_components=n_components, metric='euclidean')
             reduced_data = model.fit_transform(data)
         elif method == 'umap':
             model = umap.UMAP(n_components=n_components, metric='euclidean')
             reduced_data = model.fit_transform(data)
+
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -157,8 +203,8 @@ class StatisticalAnalysisManager:
         coefficients_df = tables[1]
         
         # Debug: Verify the correct structure of coefficients_df
-        print("Extracted Coefficients DataFrame:")
-        print(coefficients_df)
+        # print("Extracted Coefficients DataFrame:")
+        # print(coefficients_df)
 
         # Convert necessary columns to numeric types
         numeric_columns = ["Coef.", "Std.Err.", "z", "P>|z|", "[0.025", "0.975]"]
@@ -166,8 +212,8 @@ class StatisticalAnalysisManager:
             if col in coefficients_df.columns:
                 coefficients_df[col] = pd.to_numeric(coefficients_df[col], errors='coerce')
 
-        print("Converted Coefficients DataFrame:")
-        print(coefficients_df)
+        # print("Converted Coefficients DataFrame:")
+        # print(coefficients_df)
         
         return coefficients_df
 
@@ -201,7 +247,7 @@ class StatisticalAnalysisManager:
 
         # Define colors for different measurement types
 
-        for i, (ax, pc_label) in enumerate(zip(axes, ["PC1", "PC2", "PC3"])):
+        for i, (ax, pc_label) in enumerate(zip(axes, ["PC1", "PC2"])):
             self.plot_principal_contributors(ax, loadings[i], feature_names, pc_label)
         plt.tight_layout()
         plot_manager.save_plot(fig, "PCA_reverse_inference_time_contribution")
@@ -210,6 +256,17 @@ class StatisticalAnalysisManager:
         plt.close(fig)
 
     def plot_principal_contributors(self, ax, pc_loadings, feature_names, pc_label):
+
+        def extract_median_time(interval_str):
+            """Calculates the median time of an interval."""
+            try:
+                start_str, end_str = interval_str.split('-')
+                start_time = datetime.strptime(start_str, '%H:%M:%S')
+                end_time = datetime.strptime(end_str, '%H:%M:%S')
+                median_time = start_time + (end_time - start_time) / 2
+                return median_time.strftime('%H:%M')
+            except Exception as e:
+                raise ValueError(f"Error processing interval '{interval_str}': {e}")
         # Create a DataFrame for easy manipulation
         data = pd.DataFrame({
             'feature': feature_names,
@@ -218,7 +275,7 @@ class StatisticalAnalysisManager:
 
         # Extract time intervals and calculate median time for datetime formatting
         data['time'] = data['feature'].apply(lambda x: x.split('_')[0])
-        data['median_time'] = data['time'].apply(self.extract_median_time)
+        data['median_time'] = data['time'].apply(extract_median_time)
 
         # Identify the main contributor using absolute values but retain the sign for plotting
         data['abs_loading'] = data['loading'].abs()
@@ -242,10 +299,76 @@ class StatisticalAnalysisManager:
         ax.set_xticklabels(tick_indices, rotation=45, ha='right')
         ax.set_xlabel('Time of Day')
 
-    @staticmethod
-    def extract_median_time(interval_str):
-        start_str, end_str = interval_str.split('-')
-        start_time = datetime.strptime(start_str, '%H:%M:%S')
-        end_time = datetime.strptime(end_str, '%H:%M:%S')
-        median_time = start_time + (end_time - start_time) / 2
-        return median_time.strftime('%H:%M')
+
+    def calculate_fishers_criterion(self,data, target, lda_transformed):
+        # Calculate class means along the LDA projection
+        class_means = []
+        for class_label in np.unique(target):
+            class_indices = np.where(target == class_label)
+            class_data = lda_transformed[class_indices]
+            class_means.append(np.mean(class_data, axis=0))
+
+        # Calculate between-class scatter
+        between_class_scatter = np.sum((class_means[0] - class_means[1]) ** 2)
+
+        # Calculate within-class scatter
+        within_class_scatter = 0
+        for i, class_label in enumerate(np.unique(target)):
+            class_indices = np.where(target == class_label)
+            class_data = lda_transformed[class_indices]
+            class_scatter = np.sum((class_data - class_means[i]) ** 2)
+            within_class_scatter += class_scatter
+
+        # Fisher's criterion
+        fisher_criterion = between_class_scatter / within_class_scatter
+        
+        return fisher_criterion
+    
+
+    def calculate_silhouette_score(self,data, labels):
+        """
+        Calculate the silhouette score for data with given class labels.
+        
+        Parameters:
+        - data: array-like of shape (n_samples, n_features)
+        The data samples used for calculating the silhouette score.
+        
+        - labels: array-like of shape (n_samples,)
+        The class or cluster labels for samples.
+        
+        Returns:
+        - score: float
+        The silhouette score indicating the separation quality.
+        """
+        try:
+            score = silhouette_score(data, labels)
+            return score
+        except Exception as e:
+            raise ValueError(f"Error in calculating silhouette score: {str(e)}")
+        
+
+    def analyze_cluster_separation(self, reduced_data, target):
+        """
+        Analyze the separation between groups/classes using silhouette score.
+        
+        Parameters:
+        - reduced_data: ndarray
+        The reduced feature space data after LDA/PCA/etc.
+        
+        - target: array-like
+        The class/cluster labels.
+        """
+        # Calculate the silhouette score
+        try:
+            silhouette = self.calculate_silhouette_score(reduced_data, target)
+            self.log(f"Silhouette Score: {silhouette:.2f}")
+            
+            # Provide insight based on silhouette score
+            if silhouette > 0.5:
+                self.log("Good separation between groups.")
+            elif silhouette > 0.25:
+                self.log("Moderate separation, consider revising features.")
+            else:
+                self.log("Poor separation, revisit feature selections or transformations.")
+        except ValueError as e:
+            self.log(str(e))

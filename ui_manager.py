@@ -7,20 +7,21 @@ from comparison_tab_manager import ComparisonTabManager
 from state_manager import StateManager
 
 class UIManager:
-    def __init__(self, root, experiment_manager, video_manager, image_manager, log_func, state_manager):
+    def __init__(self, root, experiment_manager, video_manager, image_manager, log_func, state_manager,plot_manager):
         self.root = root
         self.experiment_manager = experiment_manager
         self.video_manager = video_manager
         self.image_manager = image_manager
         self.log = log_func
         self.state_manager = state_manager
+        self.plot_manager = plot_manager
 
         self.notebook = None
         self.setup_managers()
 
     def setup_managers(self):
         self.video_tab_manager = VideoTabManager(self.root, self, self.state_manager)
-        self.analysis_tab_manager = AnalysisTabManager(self.root, self, self.state_manager)
+        self.analysis_tab_manager = AnalysisTabManager(self.root, self, self.state_manager,self.plot_manager)
         self.batch_processing_tab_manager = BatchProcessingTabManager(self.root, self, self.state_manager)
         self.comparison_tab_manager = ComparisonTabManager(self.root, self, self.state_manager)
 

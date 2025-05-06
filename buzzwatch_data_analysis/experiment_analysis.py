@@ -326,6 +326,65 @@ class buzzwatch_experiment_analysis:
         else:
             print("background image missing")
 
+### 
+    def re_extract_single_video_analysis(self, video_name,debug_mode):
+        """ 
+        This re-extracts the population variable etc from the raw tracking data
+        """
+        # Logging files
+        #create_folder(self.folder_analysis + "/log_analysis")
+
+        forward_tracks_path = os.path.join(self.folder_final, f"forward_mosq_tracks_{video_name}")
+
+        if os.path.isfile(forward_tracks_path):
+            log_file_path = os.path.join(self.folder_analysis, "log_analysis", f"{video_name}.log")
+            logger = MultiLogger(self.log, log_file_path)
+
+            with open(forward_tracks_path, 'rb') as f:
+                mosquito_tracks = pickle.load(f)
+
+            old_stdout = sys.stdout
+            sys.stdout = logger
+
+            video_tracked = single_video_analysis(self, video_name, debug_mode)  # Initialize a video analysis object.
+
+            video_tracked.mosquito_tracks = mosquito_tracks
+            try:
+                video_tracked.extract_mosquito_population_variables()
+            except Exception as error:
+                print("An exception occurred in computing population var (fraction flying etc):", error)
+            try:
+                video_tracked.extract_mosquito_individual_variables()
+            except Exception as error:
+                print("An exception occurred in computing individual variables (flight speed etc):", error)
+
+            try:
+                video_tracked.extract_mosquito_resting_variables()
+            except Exception as error:
+                print("An exception occurred in extracting resting variables results:", error)
+
+
+            try:
+                video_tracked.extract_flight_metrics_around_resting()
+            except Exception as error:
+                print("An exception occurred in extracting sugar feeding stats:", error)
+            
+            try:
+                video_tracked.save_tracking_results()
+            except Exception as error:
+                print("An exception occurred in saving results:", error)
+
+                #video_tracked.extract_complete_trajectories_from_video(debug_mode=0)
+
+
+            #print(f"Finished analyzing {video_name}")
+
+            # Reset stdout
+            sys.stdout = old_stdout
+
+
+
+
     def display_video_final_tracking(self,video_name,starting_frame,time_btw_frames):
 
         #video_name = os.path.splitext(self.list_videos_files[video_idx])[0] # Load video_name
@@ -661,9 +720,9 @@ class buzzwatch_experiment_analysis:
 
         image_folder = self.folder_analysis + "/individual_images/"
         all_images = [cv2.imread(os.path.join(image_folder, filename), cv2.IMREAD_GRAYSCALE)
-                    for filename in sorted(os.listdir(image_folder)) if filename.endswith('.png')]
+                    for filename in sorted(os.listdir(image_folder)) if filename.endswith('.png') and filename.startswith('Cage')]
         
-        all_names = [filename[:-4] for filename in sorted(os.listdir(image_folder)) if filename.endswith('.png')]
+        all_names = [filename[:-4] for filename in sorted(os.listdir(image_folder)) if filename.endswith('.png') and filename.startswith('Cage')]
 
         for s, image in enumerate(all_images):
             if  size_window < s < len(all_images) - size_window:

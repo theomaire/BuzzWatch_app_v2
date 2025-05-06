@@ -21,6 +21,10 @@ import datetime
 from typing import List, Tuple
 import glob
 import math
+from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.patches as patches
+
+
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
@@ -73,7 +77,8 @@ class ComparisonTabManager:
             'average_speed': 'average_speed'
         }
 
-        
+        self.enable_lda_var = tk.BooleanVar(value=False)  # New variable initialization
+
 
         # Initialize group and category assignments
         self.exp_group_assignments = {}
@@ -700,6 +705,9 @@ class ComparisonTabManager:
         for index, combobox in self.exp_category_assignments.items():
             combobox['values'] = categories
 
+        # Update the LDA target selection
+        self.lda_target_combobox['values'] = categories + groups
+
         # Update the scrollable region in the canvas
 
     def add_group_inputs(self):
@@ -980,6 +988,8 @@ class ComparisonTabManager:
         options_frame.grid(row=1, column=0, padx=5, pady=5, sticky="we")
         #options_frame.grid_columnconfigure(index=0, weight=1)
 
+        self.zeitgeber_time_var = tk.BooleanVar()
+
         tk.Label(options_frame, text="Resample (1T = 1 min):").grid(row=0, column=0, sticky='w', padx=(5, 0))
         self.resample_entry = tk.Entry(options_frame, width=3)
         self.resample_entry.grid(row=0, column=1, padx=(0, 5))
@@ -1001,6 +1011,17 @@ class ComparisonTabManager:
 
         self.normalize_var = tk.BooleanVar()
         tk.Checkbutton(options_frame, text="Normalize by total day activity", variable=self.normalize_var).grid(row=0, column=6, padx=5)
+
+
+        # Zeitgeber Time Checkbutton
+        zt_checkbutton = tk.Checkbutton(options_frame, text="Use Zeitgeber Time", variable=self.zeitgeber_time_var)
+        zt_checkbutton.grid(row=0, column=7, padx=(5, 0))
+
+        tk.Label(options_frame, text="Max ylim plot:").grid(row=0, column=8, sticky='w', padx=(5, 0))
+        self.ylim_plot = tk.Entry(options_frame, width=3)
+        self.ylim_plot.grid(row=0, column=9, padx=(0, 5))
+        self.ylim_plot.insert(0, "")  # Default average window
+
 
         # Compact variables selection
         variables_frame = tk.LabelFrame(tab, text="Select Variable(s)")
@@ -1065,8 +1086,44 @@ class ComparisonTabManager:
 
         self.populate_selection_checkbuttons()
 
+
+        # Assuming the Zeitgeber time conversion starts at 08:00 as ZT0
+    def convert_to_zeitgeber_time(self, index):
+        # Create a DatetimeIndex object for 24 hours with minute resolution
+        datetime_index = pd.date_range(start='2000-01-01', periods=24*60, freq='T')
+        
+        # Calculate Zeitgeber time
+        zt_values = (datetime_index.hour + datetime_index.minute / 60) % 24 - 8 - 20/60
+        return zt_values
+
+    def add_light_intensity_bar(self,ax):
+        # Add solid color rectangles for pure black and white zones
+        ax.add_patch(patches.Rectangle((-8, -0.1), 8, 0.1, color='black', transform=ax.transData, clip_on=False))
+        ax.add_patch(patches.Rectangle((4, -0.1), 5, 0.1, color='white', transform=ax.transData, clip_on=False))
+        ax.add_patch(patches.Rectangle((12, -0.1), 4, 0.1, color='black', transform=ax.transData, clip_on=False))
+
+        # Create color gradients for the transition zones
+        gradient_colormap = LinearSegmentedColormap.from_list('custom_gradient', ['#101010', 'white'])
+        gradient_colormap_2 = LinearSegmentedColormap.from_list('custom_gradient', ['white', '#101010'])
+
+        
+        gradient_data = np.linspace(0, 1, 100).reshape(1, -1)  # Create gradient data
+        ax.imshow(gradient_data, aspect='auto', cmap=gradient_colormap,
+                extent=(0, 3, -0.1, 0),
+                transform=ax.transData, interpolation='nearest', clip_on=False)
+        ax.imshow(gradient_data, aspect='auto', cmap=gradient_colormap_2,
+                extent=(9, 12, -0.1, 0),
+                transform=ax.transData, interpolation='nearest', clip_on=False)
+        ax.set_ylim(-0.1, 0)  # Set the limits to match placement
+
+            # Remove x-ticks and labels
+        ax.set_yticks([])
+        ax.set_ylim(-0.1, 0)
+        ax.set_xticks([])
+        ax.set_xticklabels([])
+
+        
     def plot_data(self):
-        # Retrieve selected internal variable names and display names
         selected_vars = [(internal_name, display_name) for var_chk, internal_name, display_name in self.variable_vars if var_chk.get()]
 
         if not selected_vars:
@@ -1078,6 +1135,7 @@ class ComparisonTabManager:
         start_date_str = self.start_date_combobox.get()
         end_date_str = self.end_date_combobox.get()
         threshold = self.threshold_entry.get()
+        ylim = self.ylim_plot.get()
 
         start_hour = self.start_hour_scale.get()
         end_hour = self.end_hour_scale.get()
@@ -1107,13 +1165,21 @@ class ComparisonTabManager:
 
         plot_type = self.plot_type_combobox.get()
 
-        # Define specific dimensions (width, single_subplot_height) for each plot type
+        start_date = pd.to_datetime(start_date_str)
+        end_date = pd.to_datetime(end_date_str)
+        num_days = (end_date - start_date).days
+
         plot_base_dimensions = {
-            "Entire Time Series": (15, 3),
-            "Daily Average": (8, 5),
-            "Average Over Days": (8, 5),
-            "Scatter plot variability": (8, 4)
+            "Entire Time Series": (
+                min(24, max(8, 8 + (num_days / 15))),  # Width increases with days, capped at 24
+                2
+            ),
+            "Daily Average": (3.2, 2),
+            "Average Over Days": (4, 3),
+            "Scatter plot variability": (2, 1.5)
         }
+
+        use_zeitgeber_time = self.zeitgeber_time_var.get()
 
         plot_args_base = {
             "resample_interval": resample_interval,
@@ -1127,45 +1193,31 @@ class ComparisonTabManager:
             "grouped_experiments": self.grouped_experiments,
             "start_hour": start_hour,
             "end_hour": end_hour,
-            "normalize": normalize
+            "normalize": normalize,
+            "use_zeitgeber_time": use_zeitgeber_time,
+            "ylim" : ylim
         }
 
-        if self.stacked_plot_var.get():
-            num_vars = len(selected_vars)
+        num_vars = len(selected_vars)
+        base_width, single_height = plot_base_dimensions.get(plot_type, (3, 1.5))
+        total_height = single_height * num_vars
 
-            # Set figure size for stacked plots using base height times the number of variables
-            base_width, single_height = plot_base_dimensions.get(plot_type, (10, 3))  # Default to (10, 3)
-            total_height = single_height * num_vars
-            fig, axes = plt.subplots(num_vars, 1, figsize=(base_width, total_height), sharex=True, constrained_layout=True)
+        # Include additional height for light intensity bars
+        fig, axes = plt.subplots(
+            num_vars * 2,
+            1,
+            figsize=(base_width, total_height),
+            sharex=True,
+            constrained_layout=False,
+            gridspec_kw={'height_ratios': [8, 1] * num_vars}
+        )
+        plt.subplots_adjust(hspace=0.01)  # Adjust this for optimal spacing
 
-            if num_vars == 1:
-                axes = [axes]
+        axes_pairs = [(axes[i], axes[i + 1]) for i in range(0, len(axes), 2)]
 
-            for ax, (internal_name, display_name) in zip(axes, selected_vars):
-                plot_args = {**plot_args_base, "selected_vars": [internal_name], "ax": ax, "display_names": display_name}
-                if plot_type == "Entire Time Series":
-                    self.plot_manager.plot_entire_time_series(**plot_args)
-                elif plot_type == "Daily Average":
-                    self.plot_manager.plot_daily_average(**plot_args)
-                elif plot_type == "Average Over Days":
-                    self.plot_manager.plot_avg_over_days(**plot_args)
-                elif plot_type == "Scatter plot variability":
-                    self.plot_manager.plot_scatter_variability(**plot_args)
 
-            filename = f"{plot_type}_stacked_subplots"
-            self.plot_manager.save_plot(fig, filename)
-            plt.show()
-            plt.close(fig)
-
-        else:
-            # Look up the figsize for the non-stacked plot
-            base_width, single_height = plot_base_dimensions.get(plot_type, (10, 6))  # Default to (10, 6) for single plots
-            fig, ax = plt.subplots(figsize=(base_width, single_height))
-            plot_args = {**plot_args_base,
-                        "selected_vars": [internal_name for internal_name, display_name in selected_vars],
-                        "ax": ax,
-                        "display_names": [display_name for internal_name, display_name in selected_vars]}
-
+        for (ax, light_ax), (internal_name, display_name) in zip(axes_pairs, selected_vars):
+            plot_args = {**plot_args_base, "selected_vars": [internal_name], "ax": ax, "display_names": display_name}
             if plot_type == "Entire Time Series":
                 self.plot_manager.plot_entire_time_series(**plot_args)
             elif plot_type == "Daily Average":
@@ -1175,7 +1227,22 @@ class ComparisonTabManager:
             elif plot_type == "Scatter plot variability":
                 self.plot_manager.plot_scatter_variability(**plot_args)
 
-        # Base of the filename
+            if use_zeitgeber_time:
+                self.add_light_intensity_bar(light_ax)
+                ax.set_xlim(-8, 16)
+                zt_ticks = list(range(-8, 17,2))
+                zt_labels = [f"{(t)}" for t in zt_ticks]
+                ax.set_xticks(zt_ticks)
+                ax.set_xticklabels(zt_labels)
+
+            # Add the light intensity bar below each plot
+
+
+                    # Set x-ticks and labels only on the main plot
+                light_ax.set_xlabel("ZT")
+        #plt.tight_layout()
+        plt.subplots_adjust(hspace=0.1)  # Adjust this for optimal spacing
+
         exp_names = [exp_data['alias'] for exp_data in experiments_to_plot]
         vars_part = "_".join([display_name.replace(' ', '-') for _, display_name in selected_vars])
         exp_part = "_and_".join(exp_names) if exp_names else "NoExperiment"
@@ -1184,8 +1251,8 @@ class ComparisonTabManager:
 
         exp_group_cat_part = "_and_".join(filter(None, [exp_part, group_part, category_part]))
         filename = f"{plot_type}_{vars_part}_{exp_group_cat_part}_Normalize_{normalize}"
-
         self.plot_manager.save_plot(fig, filename)
+
         plt.show()
         plt.close(fig)
 
@@ -1219,7 +1286,7 @@ class ComparisonTabManager:
         reduction_method_label = tk.Label(red_frame, text="Reduction Method:")
         reduction_method_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
 
-        self.reduction_method_combobox = ttk.Combobox(red_frame, values=["PCA", "t-SNE", "UMAP"], width=12)
+        self.reduction_method_combobox = ttk.Combobox(red_frame, values=["PCA", "t-SNE", "UMAP", "LDA"], width=12)
         self.reduction_method_combobox.set("PCA")
         self.reduction_method_combobox.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
@@ -1229,7 +1296,7 @@ class ComparisonTabManager:
         self.data_level_combobox = ttk.Combobox(red_frame, values=["Experiments", "Groups", "Categories"], width=12)
         self.data_level_combobox.set("Experiments")
         self.data_level_combobox.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-        
+
         interval_label = tk.Label(red_frame, text="Interval (minutes):")
         interval_label.grid(row=2, column=0, padx=5, pady=5, sticky="w")
 
@@ -1238,15 +1305,32 @@ class ComparisonTabManager:
         self.interval_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
         self.normalize_dim_reduction_var = tk.BooleanVar()
-        normalize_checkbox = tk.Checkbutton(red_frame, text="Normalize by Total Daily Activity", variable=self.normalize_dim_reduction_var)
+        normalize_checkbox = tk.Checkbutton(red_frame, text="Normalize by Total Daily Activity",
+                                            variable=self.normalize_dim_reduction_var)
         normalize_checkbox.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
         self.plot_days_annotation = tk.BooleanVar()
         annotate_checkbox = tk.Checkbutton(red_frame, text="Annotate days", variable=self.plot_days_annotation)
         annotate_checkbox.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
-        dimensionality_button = tk.Button(red_frame, text="Run Dimensionality Reduction", command=self.run_dimensionality_reduction)
-        dimensionality_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        # LDA option
+        self.enable_lda_var = tk.BooleanVar()
+        lda_checkbox = tk.Checkbutton(red_frame, text="Enable LDA Analysis", variable=self.enable_lda_var,
+                                    command=self.toggle_lda)
+        lda_checkbox.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
+        lda_target_label = tk.Label(red_frame, text="LDA Target:")
+        lda_target_label.grid(row=6, column=0, padx=5, pady=5, sticky="w")
+
+        self.lda_target_combobox = ttk.Combobox(red_frame, width=15)
+        self.lda_target_combobox.grid(row=6, column=1, padx=5, pady=5, sticky="ew")
+
+        # Initially disable the target combobox
+        self.lda_target_combobox.configure(state='disabled')
+
+        dimensionality_button = tk.Button(red_frame, text="Run Dimensionality Reduction",
+                                        command=self.run_dimensionality_reduction)
+        dimensionality_button.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
         # GLMM Analysis configuration
         analysis_frame = tk.LabelFrame(tab, text="GLMM Analysis Configuration", padx=10, pady=10)
@@ -1322,14 +1406,14 @@ class ComparisonTabManager:
 
     def run_dimensionality_reduction(self):
         selected_var = 'numb_mosquitos_flying'
+        #selected_var = 'sugar_feeding_index'
         data_level = self.data_level_combobox.get().lower()
         interval_hours = int(self.interval_entry.get())
         
         combined_data = self.get_combined_data_for_dimension_reduction(selected_var, data_level)
-
         # if normalize:
         #     combined_data = self.plot_manager.normalize_by_daily_total(combined_data)
-        #print(combined_data)
+        # print(combined_data)
         # Ensure the index is set correctly as a DatetimeIndex
         if not isinstance(combined_data.index, pd.DatetimeIndex):
             combined_data.set_index('Date', inplace=True)
@@ -1342,28 +1426,75 @@ class ComparisonTabManager:
             # Remove the last day
         max_date = combined_data.index.max().date()  # Get the last day
         combined_data = combined_data[combined_data.index.date < max_date]  # Exclude entries from the last day
+
+        enable_lda = self.enable_lda_var.get()
+        selected_lda_target = self.lda_target_combobox.get() if enable_lda else None
+
         #print(combined_data)
 
         interval_features = self.prepare_interval_features(combined_data, selected_var, interval_hours)
         interval_features.dropna(inplace=True)
-
         days = interval_features['Date']
         experiments = interval_features['Experiment']
+        target_data = self.get_target_labels_for_lda(experiments, selected_lda_target) if enable_lda else None
+
         #print(experiments)
         feature_data = interval_features.drop(columns=['Date', 'Experiment'])
         #print(feature_data)
         #print(feature_data)
         method = self.reduction_method_combobox.get().lower()
-        
-        reduced_data,explained_variance = self.stat_analysis_manager.run_dimensionality_reduction(feature_data, self.plot_manager, method=method)
-        #print(reduced_data)
-        #print(reduced_data)
-        # Prepare reduced dataframe (for example purposes) to include in visualization call
+
+        #print(combined_data)
+        #target = self.get_target_labels_for_lda(experiments)  # New function to get class labels
+        feature_names = experiments
+
+        reduced_data, explained_variance = self.stat_analysis_manager.perform_dimensionality_reduction(
+            feature_data,self.plot_manager, target=target_data, use_lda=enable_lda
+        )        
         reduced_df = pd.DataFrame(reduced_data, index=experiments)
 
         plot_days = self.plot_days_annotation.get()
         # Use PlotManager to visualize the reduced data
         self.plot_manager.visualize_reduced_data(reduced_df, self.grouped_experiments, method, days,plot_days,interval_hours,data_level,self.normalize_dim_reduction_var.get(),explained_variance)
+
+
+    def get_target_labels_for_lda(self, experiment_labels, selected_lda_target):
+        """
+        Determines target labels for LDA based on the selected target (Group or Category).
+
+        Parameters:
+        - experiment_labels (pd.Series): A series containing labels for Experiments, Groups, or Categories.
+        - selected_lda_target (str): The name of the selected Group or Category to be used as the positive class.
+
+        Returns:
+        - pd.Series: A binary series where entries are 1 if the experiment belongs to the target, otherwise 0.
+        """
+        experiment_to_group_category = {}
+        for category_name, groups in self.grouped_experiments.items():
+            for group_name, experiment_list in groups.items():
+                for exp_data in experiment_list:
+                    alias = exp_data.get('alias')
+                    if alias:
+                        experiment_to_group_category[alias] = (group_name, category_name)
+
+
+        target_labels = pd.Series(0, index=experiment_labels.index)
+        #print(target_labels)
+        #print(experiment_labels)
+        for idx, label in enumerate(experiment_labels):
+            if label in experiment_to_group_category: # It's an experiment name
+                group_name, category_name = experiment_to_group_category[label]
+            elif label in self.grouped_experiments: # It's a category name
+                category_name = label
+                group_name = None
+            else: # it's a group name
+                group_name = label
+                category_name = next((cat_name for cat_name, groups in self.grouped_experiments.items() if group_name in groups), "Unknown")
+            
+            if group_name == selected_lda_target or category_name == selected_lda_target:
+                target_labels[idx] = 1
+        
+        return target_labels
 
 
     def get_combined_data_for_dimension_reduction(self, var, data_level):
@@ -1998,7 +2129,7 @@ class ComparisonTabManager:
             end_day = unique_days[i + interval_size - 1]
             intervals.append((start_day, end_day))
 
-        print(intervals)
+        #print(intervals)
 
         return intervals
     
@@ -2027,7 +2158,7 @@ class ComparisonTabManager:
             return
 
         # Create a figure with 4 vertically aligned subplots sharing the same x-axis
-        fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(5, 5),sharex=True)
+        fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(3, 4),sharex=True)
 
     # Extract information for GLMM plots
         minutes = [res['minute'] for res in results]
@@ -2046,12 +2177,12 @@ class ComparisonTabManager:
 
 
         # Plot Z-Scores
-        axes[0].plot(datetime_values , z_scores, marker='o', linestyle='-',color = 'black' )
+        axes[0].plot(datetime_values , z_scores, marker='o', linestyle='-',color = 'black' ,markersize=3)
         axes[0].set_ylabel('Z-Score')
 
         # Plot P-Values in -log10 scale
         log_p_values = [-np.log10(p) if p > 0 else np.nan for p in p_values]
-        axes[1].plot(datetime_values , log_p_values, marker='o', linestyle='-',color = 'black')
+        axes[1].plot(datetime_values , log_p_values, marker='o', linestyle='-',color = 'black',markersize=3)
         axes[1].set_ylabel('-Log10(P-Value)')
         axes[1].axhline(-np.log10(0.01), color='r', linestyle='--', label='p = 0.01')
         axes[1].axhline(-np.log10(0.05), color='b', linestyle='--', label='p = 0.05')
@@ -2091,7 +2222,7 @@ class ComparisonTabManager:
         axes[2].set_xlabel('Hour of the Day')
         axes[2].set_ylabel('Average Value')
         axes[2].set_title(None)
-        axes[2].legend(fontsize=5)  # Example of specifying a numerical font size
+        axes[2].legend(fontsize=3)  # Example of specifying a numerical font size
 
         
         plt.tight_layout()
@@ -2119,10 +2250,8 @@ class ComparisonTabManager:
 
             # Calculate median days for intervals
             day_interval_size = int(self.day_interval_size_combobox.get())
-            interval_labels = [
-                f"Day {(2*idx  + day_interval_size )/ 2}"
-                for idx in range(len(results_df['day_interval'].unique()))
-            ]
+            unique_intervals = results_df['day_interval'].unique()
+            interval_labels = [f"Day {(2*idx + day_interval_size)/2}" for idx in range(len(unique_intervals))]
 
             # For each fixed effect, create and plot heatmaps
             for effect in fixed_effects:
@@ -2140,16 +2269,16 @@ class ComparisonTabManager:
                 norm = mcolors.Normalize(vmin=0, vmax=5)
 
                 # Plotting
-                fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 8))
+                fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(4, 4))
 
                 # Z-Score Heatmap with diverging colormap
                 sns.heatmap(z_value_heatmap_data, annot=False, cmap=cmap_z, center=0,
                             cbar_kws={'label': 'Z Value'}, ax=axes[0],
                             vmin=-6, vmax=6)
-                axes[0].set_title(f'Z-Values for {effect} (Baselines: {baseline})', fontsize=14)
-                axes[0].set_xlabel("Time Interval (hour:minute)", fontsize=12)
-                axes[0].set_ylabel("Median Day", fontsize=12)
-                axes[0].set_yticklabels(interval_labels, rotation=0)
+                axes[0].set_title(f'Z-Values for {effect} (Baselines: {baseline})', fontsize=10)
+                axes[0].set_xlabel("Time Interval (hour:minute)", fontsize=10)
+                axes[0].set_ylabel("Median Day", fontsize=10)
+                #axes[0].set_yticklabels(interval_labels, rotation=0)
 
                 # Annotate P-Values
                 def star_annotation(p):
@@ -2166,11 +2295,12 @@ class ComparisonTabManager:
 
                 # -log10(P-Value) Heatmap with annotations
                 sns.heatmap(neg_log_p_heatmap_data, annot=p_value_annotations, cmap=cmap,
-                            cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], norm=norm, fmt="", annot_kws={"fontsize": 8})
-                axes[1].set_title(f'-log10(p-value) for {effect} (Baselines: {baseline})', fontsize=14)
-                axes[1].set_xlabel("Time Interval (hour:minute)", fontsize=12)
-                axes[1].set_ylabel("Median Day", fontsize=12)
-                axes[1].set_yticklabels(interval_labels, rotation=0)
+                            cbar_kws={'label': '-log10(p-value)'}, ax=axes[1], norm=norm, fmt="", annot_kws={"fontsize": 10})
+                axes[1].set_title(f'-log10(p-value) for {effect} (Baselines: {baseline})', fontsize=10)
+                axes[1].set_xlabel("Time Interval (hour:minute)", fontsize=10)
+                axes[1].set_ylabel("Median Day", fontsize=10)
+                #axes[1].set_yticklabels(interval_labels, rotation=0)
+
 
                 plt.tight_layout()
 
@@ -2190,21 +2320,24 @@ class ComparisonTabManager:
 
 
         # Define variables with their normalization settings
+
+        # Settings for infection
+        variable_configs = [
+            ('Abs. Flying', 'numb_mosquitos_flying', False),
+            ('Flight rhythm', 'numb_mosquitos_flying', True),
+            ('Sugar feeding', 'sugar_feeding_index', False),
+            ('Flight Duration', 'flight_duration', False),
+            ('Flight Speed', 'average_speed', False)
+        ]
+
         # variable_configs = [
         #     ('Abs. Flying', 'numb_mosquitos_flying', False),
         #     ('Flight rhythm', 'numb_mosquitos_flying', True),
         #     ('Abs. Sugar feeder', 'numb_mosquitos_sugar', False),
+        #     ('Norm. Sugar feeding', 'sugar_feeding_index', False),
+        #     ('Flight Duration', 'flight_duration', False),
         #     ('Flight Speed', 'average_speed', False)
         # ]
-
-        variable_configs = [
-            ('Abs. Flying', 'numb_mosquitos_flying', False),
-            ('Flight rhythm', 'numb_mosquitos_flying', True),
-            ('Abs. Sugar feeder', 'numb_mosquitos_sugar', False),
-            ('Norm. Sugar feeding', 'sugar_feeding_index', False),
-            ('Flight Duration', 'flight_duration', False),
-            ('Flight Speed', 'average_speed', False)
-        ]
 
         # Get settings from the UI
         fixed_effects = [self.fixed_effects_entry.get()]
@@ -2225,9 +2358,8 @@ class ComparisonTabManager:
         self.summarize_glmm_results( time_interval, day_interval_size,variable_configs)
 
 
-    def summarize_glmm_results(self,  time_interval: int, day_interval_size: str, variable_configs: List[Tuple[str, str, bool]], threshold: float = 0.05) -> None:
+    def summarize_glmm_results(self, time_interval: int, day_interval_size: str, variable_configs: List[Tuple[str, str, bool]], threshold: float = 0.05) -> None:
         scale_plot = 0.8
-
         data_dict = {}
 
         for display_label, variable, normalize in variable_configs:
@@ -2250,33 +2382,43 @@ class ComparisonTabManager:
         combined_data = pd.DataFrame(data_dict).transpose().reindex(columns=range(24), fill_value=np.nan)
 
         num_vars = len(variable_configs)
-        fig, axes = plt.subplots(num_vars, 1, figsize=(scale_plot*3, num_vars * 0.3*scale_plot), sharex=True, gridspec_kw={'hspace': 0.2})
+        fig, axes = plt.subplots(num_vars + 1, 1, figsize=(scale_plot*3, num_vars * 0.3*scale_plot), sharex=False, gridspec_kw={'hspace': 0.05, 'height_ratios': [8] * num_vars + [1]})
 
         cmap_z = sns.diverging_palette(150, 275, s=80, l=55, n=11, center="light", as_cmap=True)
 
-        for ax, (label, data) in zip(axes, combined_data.iterrows()):
+        heatmap_axes = axes[:num_vars]
+        bar_ax = axes[-1]
+
+         # Convert index to Zeitgeber time
+        zt_indices = self.convert_to_zeitgeber_time(pd.Series(range(24)))
+        zt_ticks = [int(i) for i in zt_indices if i % 4 == 0]  # Even Zeitgeber times
+        zt_labels = [f"{int(t)}" for t in zt_ticks]
+
+        for ax, label_data in zip(heatmap_axes, combined_data.iterrows()):
+            label, data = label_data
             sns.heatmap(data.to_frame().transpose(), ax=ax, cmap=cmap_z, cbar=False,
                         vmin=-6, vmax=6, linewidths=0.5, linecolor='grey', xticklabels=False)
-
-            ax.set_ylabel(label, rotation=0, labelpad=5, ha='right',va ='center')  # Use display_label for y-axis
-            ax.set_xlabel('')
+            ax.set_ylabel(label, rotation=0, labelpad=5, ha='right', va='center')
             ax.set_yticks([])
-            ax.set_xticks([])
+            #ax.set_xticks(zt_ticks)
+            #ax.set_xlim([-8,16])
 
-        tick_hours = range(0, 24, 3)
-        axes[-1].set_xticks(tick_hours)
-        axes[-1].set_xticklabels([f"{h}:00" for h in tick_hours], rotation=45)
-        axes[-1].set_xlabel('Hour of the Day')
+        self.add_light_intensity_bar(bar_ax)
+
+        print(zt_labels)
+        heatmap_axes[-1].set_xticks(zt_ticks)
+        heatmap_axes[-1].set_xticklabels(zt_labels, rotation=45)
+        heatmap_axes[-1].set_xlim([-8,16])
+        heatmap_axes[-1].set_xlabel('Zeitgeber Time')
 
         cbar = fig.colorbar(plt.cm.ScalarMappable(cmap=cmap_z, norm=plt.Normalize(vmin=-6, vmax=6)),
-                            ax=axes, location='right', fraction=0.02, pad=0.1)
-                            
+                            ax=heatmap_axes, location='right', fraction=0.02, pad=0.1)
         cbar.set_label('Z-Score')
 
         fig.suptitle('Z-Score Heatmaps (P-Value < 0.05)', y=0.98)
 
         heatmap_filename = os.path.join(self.glmm_subfolder, "z_score_heatmaps")
-        plt.tight_layout(rect=[0, 0, 0.9, 1])
+        #plt.tight_layout(rect=[0, 0, 0.9, 1])
 
         self.plot_manager.save_plot(fig, heatmap_filename)
         plt.show()
@@ -2440,3 +2582,10 @@ class ComparisonTabManager:
                 combobox.set(date_strings[0])  # Set to the earliest date
             elif date_type == 'end':
                 combobox.set(date_strings[-1])  # Set to the latest date
+
+
+    def toggle_lda(self):
+        if self.enable_lda_var.get():
+            self.lda_target_combobox.configure(state='normal')  # Enable if LDA is checked
+        else:
+            self.lda_target_combobox.configure(state='disabled')  # Disable otherwise
