@@ -79,7 +79,7 @@ class PlotManager:
         #zt_values = [(v - 16 if v >= 16 else v) for v in zt_values]
         return zt_values
 
-    def plot_entire_time_series(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, normalize=False, ax=None, display_names=None):
+    def plot_entire_time_series(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, normalize=False, ax=None, display_names=None,use_zeitgeber_time=False,ylim=None):
         start_date = pd.to_datetime(start_date_str)
         end_date = pd.to_datetime(end_date_str)
         
@@ -463,7 +463,6 @@ class PlotManager:
                 
 
             # Add the light intensity bar at this point
-            print(ylim)
             if ylim == '':
                 pass
             else:
@@ -477,7 +476,7 @@ class PlotManager:
         except Exception as e:
             print(f"An error occurred: {e}")
 
-    def plot_avg_over_days(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, normalize=False, ax=None, display_names=None):
+    def plot_avg_over_days(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, normalize=False, ax=None, display_names=None,use_zeitgeber_time=False,ylim=None):
         start_date = pd.to_datetime(start_date_str)
         end_date = pd.to_datetime(end_date_str)
 
@@ -634,7 +633,7 @@ class PlotManager:
         
 
 ###################### Scatter bar plot variabiltity ###################
-    def plot_scatter_variability(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, ax=None, display_names=None, normalize=False):
+    def plot_scatter_variability(self, selected_vars, resample_interval, moving_avg_window, start_date_str, end_date_str, threshold, experiments_to_plot, groups_to_plot, categories_to_plot, grouped_experiments, start_hour=None, end_hour=None, ax=None, display_names=None, normalize=False,use_zeitgeber_time=False,ylim=None):
         start_date = pd.to_datetime(start_date_str)
         end_date = pd.to_datetime(end_date_str)
 
