@@ -89,7 +89,10 @@ class ComparisonTabManager:
         self.glmm_analysis_manager = GLMMAnalysisManager(self.log, self.glmm_results_dir)
 
     def compute_sugar_feeding_index(self, population_data):
-        sugar_feeding_index = population_data['numb_mosquitos_sugar'] - population_data['numb_mosquitos_hs']
+         #For Aedes#sugar_feeding_index = population_data['numb_mosquitos_sugar'] - population_data['numb_mosquitos_hs']
+        #For Aedes#s
+        sugar_feeding_index = population_data['numb_mosquitos_sugar'] + population_data['numb_mosquitos_hs']
+
         # Optionally apply more complex transformations or filters if needed
         return sugar_feeding_index
     
@@ -1093,14 +1096,20 @@ class ComparisonTabManager:
         datetime_index = pd.date_range(start='2000-01-01', periods=24*60, freq='T')
         
         # Calculate Zeitgeber time
-        zt_values = (datetime_index.hour + datetime_index.minute / 60) % 24 - 8 - 20/60
+        zt_values = (datetime_index.hour + datetime_index.minute / 60) % 24 - 6 - 20/60
         return zt_values
 
     def add_light_intensity_bar(self,ax):
         # Add solid color rectangles for pure black and white zones
-        ax.add_patch(patches.Rectangle((-8, -0.1), 8, 0.1, color='black', transform=ax.transData, clip_on=False))
-        ax.add_patch(patches.Rectangle((4, -0.1), 5, 0.1, color='white', transform=ax.transData, clip_on=False))
-        ax.add_patch(patches.Rectangle((12, -0.1), 4, 0.1, color='black', transform=ax.transData, clip_on=False))
+        ax.add_patch(patches.Rectangle((-6, -0.1), 6, 0.1, color='black', transform=ax.transData, clip_on=False))
+        ax.add_patch(patches.Rectangle((4, -0.1), 8, 0.1, color='white', transform=ax.transData, clip_on=False))
+        ax.add_patch(patches.Rectangle((15, -0.1), 4, 0.1, color='black', transform=ax.transData, clip_on=False))
+
+
+# For Aedes
+        # ax.add_patch(patches.Rectangle((-8, -0.1), 8, 0.1, color='black', transform=ax.transData, clip_on=False))
+        # ax.add_patch(patches.Rectangle((4, -0.1), 5, 0.1, color='white', transform=ax.transData, clip_on=False))
+        # ax.add_patch(patches.Rectangle((12, -0.1), 4, 0.1, color='black', transform=ax.transData, clip_on=False))
 
         # Create color gradients for the transition zones
         gradient_colormap = LinearSegmentedColormap.from_list('custom_gradient', ['#101010', 'white'])
@@ -1112,8 +1121,17 @@ class ComparisonTabManager:
                 extent=(0, 3, -0.1, 0),
                 transform=ax.transData, interpolation='nearest', clip_on=False)
         ax.imshow(gradient_data, aspect='auto', cmap=gradient_colormap_2,
-                extent=(9, 12, -0.1, 0),
+                extent=(12, 15, -0.1, 0),
                 transform=ax.transData, interpolation='nearest', clip_on=False)
+        
+
+# For Aedes
+        # ax.imshow(gradient_data, aspect='auto', cmap=gradient_colormap,
+        #     extent=(0, 3, -0.1, 0),
+        #     transform=ax.transData, interpolation='nearest', clip_on=False)
+        # ax.imshow(gradient_data, aspect='auto', cmap=gradient_colormap_2,
+        #         extent=(9, 12, -0.1, 0),
+        #         transform=ax.transData, interpolation='nearest', clip_on=False)
         ax.set_ylim(-0.1, 0)  # Set the limits to match placement
 
             # Remove x-ticks and labels
@@ -1227,10 +1245,15 @@ class ComparisonTabManager:
             elif plot_type == "Scatter plot variability":
                 self.plot_manager.plot_scatter_variability(**plot_args)
 
+# For Anopheles
             if use_zeitgeber_time:
                 self.add_light_intensity_bar(light_ax)
-                ax.set_xlim(-8, 16)
-                zt_ticks = list(range(-8, 17,2))
+                ax.set_xlim(-6, 18)
+                zt_ticks = list(range(-6, 19,2))
+
+# For Aedes
+                # ax.set_xlim(-8, 16)
+                # zt_ticks = list(range(-8, 17,2))
                 zt_labels = [f"{(t)}" for t in zt_ticks]
                 ax.set_xticks(zt_ticks)
                 ax.set_xticklabels(zt_labels)
@@ -2408,7 +2431,7 @@ class ComparisonTabManager:
         print(zt_labels)
         heatmap_axes[-1].set_xticks(zt_ticks)
         heatmap_axes[-1].set_xticklabels(zt_labels, rotation=45)
-        heatmap_axes[-1].set_xlim([-8,16])
+        heatmap_axes[-1].set_xlim([-6,18])
         heatmap_axes[-1].set_xlabel('Zeitgeber Time')
 
         cbar = fig.colorbar(plt.cm.ScalarMappable(cmap=cmap_z, norm=plt.Normalize(vmin=-6, vmax=6)),

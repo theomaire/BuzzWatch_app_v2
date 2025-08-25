@@ -73,7 +73,7 @@ class PlotManager:
     def convert_to_zeitgeber_time(self,index):
         # Shift time to match ZT0 at 08:00, wrapping around correctly
         #zt_index = index.shift(-8, 'H')
-        zt_values = (index.hour + index.minute / 60) % 24 - 8 - 20/60 # With 20 min correction (first video is 01, not 00)
+        zt_values = (index.hour + index.minute / 60) % 24 - 6 - 20/60 # With 20 min correction (first video is 01, not 00)
         
         # Map ZT to the desired range [-8, 15] for plotting
         #zt_values = [(v - 16 if v >= 16 else v) for v in zt_values]
